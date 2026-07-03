@@ -10,4 +10,7 @@ public enum WinlinkError: Error, Sendable, Equatable {
     case malformedInput(String)
     /// A CRC16 or size check failed (LZHUF/B2 framing).
     case invalidChecksum
+    /// The message violates a Winlink Message Structure constraint
+    /// (Go: ValidationError).
+    case validation(field: String, reason: String)
 }
