@@ -8,4 +8,6 @@ public enum WinlinkError: Error, Sendable, Equatable {
     case connectionClosed
     /// A protocol line or frame could not be parsed.
     case malformedInput(String)
+    /// A CRC16 or size check failed (LZHUF/B2 framing).
+    case invalidChecksum
 }
