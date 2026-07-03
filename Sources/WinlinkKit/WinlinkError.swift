@@ -1,0 +1,11 @@
+import Foundation
+
+/// Typed errors for the protocol path. Never `fatalError` in protocol code.
+public enum WinlinkError: Error, Sendable, Equatable {
+    /// The remote SID does not advertise the required B2 feature.
+    case unsupportedRemoteSID(String)
+    /// The connection was closed unexpectedly.
+    case connectionClosed
+    /// A protocol line or frame could not be parsed.
+    case malformedInput(String)
+}
