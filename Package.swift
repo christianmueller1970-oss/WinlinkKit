@@ -7,11 +7,16 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .library(name: "WinlinkKit", targets: ["WinlinkKit"])
+        .library(name: "WinlinkKit", targets: ["WinlinkKit"]),
+        .executable(name: "winlinkkit-cli", targets: ["winlinkkit-cli"]),
     ],
     targets: [
         .target(
             name: "WinlinkKit"
+        ),
+        .executableTarget(
+            name: "winlinkkit-cli",
+            dependencies: ["WinlinkKit"]
         ),
         .testTarget(
             name: "WinlinkKitTests",
