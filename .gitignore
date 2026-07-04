@@ -5,3 +5,4 @@ xcuserdata/
 DerivedData/
 # Local clone of the wl2k-go reference implementation (see CLAUDE.md)
 reference/
+mailbox/
