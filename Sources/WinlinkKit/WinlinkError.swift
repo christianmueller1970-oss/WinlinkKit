@@ -13,4 +13,15 @@ public enum WinlinkError: Error, Sendable, Equatable {
     /// The message violates a Winlink Message Structure constraint
     /// (Go: ValidationError).
     case validation(field: String, reason: String)
+    /// The remote reported an error (a `*`-prefixed protocol line).
+    case remoteError(String)
+}
+
+extension WinlinkError {
+    /// True if the error reports that the secure login failed
+    /// (Go: IsLoginFailure).
+    public var isLoginFailure: Bool {
+        guard case .remoteError(let message) = self else { return false }
+        return message.lowercased().contains("secure login failed")
+    }
 }
