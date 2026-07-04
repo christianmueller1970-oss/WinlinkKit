@@ -6,5 +6,5 @@ public enum WinlinkKit {
     public static let version = "0.1.0"
 }
 
-/// Protocol line ending: FBB/B2F uses a bare CR, not CRLF.
-let protocolLineEnding: UInt8 = 0x0D // '\r'
+// The protocol line ending (bare CR, not CRLF) is defined once in
+// FBBControl.cr / protocolCR (TransportReader.swift).

@@ -16,7 +16,9 @@ public struct MessageType: RawRepresentable, Equatable, Sendable {
 
 /// An attachment (Go: File).
 public struct B2File: Equatable, Sendable {
+    /// The file name (max 255 characters per the B2F spec).
     public let name: String
+    /// The file contents.
     public let data: Data
 
     /// A B2F file must have an associated name.

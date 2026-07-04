@@ -233,10 +233,15 @@ extension Proposal {
 /// Details of a message pending download, sent by CMS v4 as `;PM:` lines
 /// (Go: PendingMessage, parsePM in handshake.go).
 public struct PendingMessage: Equatable, Sendable {
+    /// The unique message ID.
     public let mid: String
+    /// The primary receiver.
     public let to: Address
+    /// The sender.
     public let from: Address
+    /// The message subject.
     public let subject: String
+    /// The compressed message size in bytes.
     public let size: Int
 
     /// Parses a `;PM: TO MID SIZE FROM SUBJECT` line.

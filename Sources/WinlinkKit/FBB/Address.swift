@@ -3,7 +3,9 @@ import Foundation
 
 /// Representation of a receiver/sender address.
 public struct Address: Equatable, Hashable, Sendable {
+    /// The transport protocol prefix (e.g. `SMTP`); empty for Winlink addresses.
     public var proto: String
+    /// The address part: a callsign (`HB9HJI`) or an email address.
     public var addr: String
 
     public init(proto: String = "", addr: String) {

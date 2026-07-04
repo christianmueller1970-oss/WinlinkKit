@@ -7,8 +7,9 @@ import Network
 /// Handles the `Callsign :` / `Password :` login prompts during dialing;
 /// once `dial` returns, the connection is ready for the B2F session.
 public actor TelnetTransport: WinlinkTransport {
-    /// The common CMS telnet gateway (Go: CMSAddress).
+    /// The common CMS telnet gateway host (Go: CMSAddress).
     public static let cmsHost = "server.winlink.org"
+    /// The CMS telnet port.
     public static let cmsPort: UInt16 = 8772
 
     /// Target call for CMS connections (Go: CMSTargetCall).
