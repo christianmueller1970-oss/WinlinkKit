@@ -1,6 +1,5 @@
 // Ported from wl2k-go/transport/telnet/dial.go
 import Foundation
-import Network
 
 /// Telnet/TCP transport to a Winlink CMS (or any telnet RMS).
 ///
@@ -19,14 +18,13 @@ public actor TelnetTransport: WinlinkTransport {
     /// user's Winlink account password (Go: CMSPassword).
     public static let cmsPassword = "CMSTelnet"
 
-    private let connection: NWConnection
+    private let tcp: TCPTransport
 
     /// Bytes received during login that belong to the session already.
     private var leftover = Data()
-    private var isClosed = false
 
-    private init(connection: NWConnection) {
-        self.connection = connection
+    private init(tcp: TCPTransport) {
+        self.tcp = tcp
     }
 
     // MARK: - Dialing
@@ -58,17 +56,9 @@ public actor TelnetTransport: WinlinkTransport {
         host: String, port: UInt16, mycall: String, password: String,
         timeout: TimeInterval = 30
     ) async throws -> TelnetTransport {
-        let tcp = NWProtocolTCP.Options()
-        tcp.connectionTimeout = Int(timeout)
-        let connection = NWConnection(
-            host: NWEndpoint.Host(host),
-            port: NWEndpoint.Port(rawValue: port)!,
-            using: NWParameters(tls: nil, tcp: tcp)
-        )
+        let tcp = try await TCPTransport.connect(host: host, port: port, timeout: timeout)
 
-        try await start(connection)
-
-        let transport = TelnetTransport(connection: connection)
+        let transport = TelnetTransport(tcp: tcp)
         do {
             try await transport.login(mycall: mycall, password: password)
         } catch {
@@ -76,29 +66,6 @@ public actor TelnetTransport: WinlinkTransport {
             throw error
         }
         return transport
-    }
-
-    /// Starts the connection and awaits the ready state.
-    private static func start(_ connection: NWConnection) async throws {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
-            connection.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    connection.stateUpdateHandler = nil
-                    cont.resume()
-                case .failed(let error):
-                    connection.stateUpdateHandler = nil
-                    connection.cancel()
-                    cont.resume(throwing: error)
-                case .cancelled:
-                    connection.stateUpdateHandler = nil
-                    cont.resume(throwing: WinlinkError.connectionClosed)
-                default:
-                    break // .setup, .preparing, .waiting — keep waiting.
-                }
-            }
-            connection.start(queue: .global())
-        }
     }
 
     /// Answers the CR-terminated `Callsign :` / `Password :` prompts.
@@ -115,16 +82,16 @@ public actor TelnetTransport: WinlinkTransport {
                 buffer.removeSubrange(...idx)
 
                 if line.hasPrefix("callsign") {
-                    try await write(Data("\(mycall)\r".utf8))
+                    try await tcp.write(Data("\(mycall)\r".utf8))
                 } else if line.hasPrefix("password") {
-                    try await write(Data("\(password)\r".utf8))
+                    try await tcp.write(Data("\(password)\r".utf8))
                     leftover = Data(buffer)
                     return
                 }
                 // Anything else (banners etc.) is ignored.
             }
 
-            let chunk = try await receiveChunk()
+            let chunk = try await tcp.read()
             guard !chunk.isEmpty else {
                 throw WinlinkError.connectionClosed
             }
@@ -139,43 +106,14 @@ public actor TelnetTransport: WinlinkTransport {
             defer { leftover = Data() }
             return leftover
         }
-        return try await receiveChunk()
-    }
-
-    private func receiveChunk() async throws -> Data {
-        try await withCheckedThrowingContinuation { cont in
-            connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) {
-                data, _, isComplete, error in
-                if let data, !data.isEmpty {
-                    cont.resume(returning: data)
-                } else if let error {
-                    cont.resume(throwing: error)
-                } else {
-                    // isComplete without data: remote closed the connection.
-                    _ = isComplete
-                    cont.resume(returning: Data())
-                }
-            }
-        }
+        return try await tcp.read()
     }
 
     public func write(_ data: Data) async throws {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
-            connection.send(
-                content: data,
-                completion: .contentProcessed { error in
-                    if let error {
-                        cont.resume(throwing: error)
-                    } else {
-                        cont.resume()
-                    }
-                })
-        }
+        try await tcp.write(data)
     }
 
-    public func close() {
-        guard !isClosed else { return }
-        isClosed = true
-        connection.cancel()
+    public func close() async {
+        await tcp.close()
     }
 }

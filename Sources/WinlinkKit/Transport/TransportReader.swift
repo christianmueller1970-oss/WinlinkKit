@@ -6,7 +6,7 @@ import Foundation
 /// Provides the primitives the B2F session needs: single bytes,
 /// one-byte peek (Go: bufio.Reader.Peek) and CR-terminated protocol
 /// lines (Go: bufio.Reader.ReadString).
-final class TransportReader {
+actor TransportReader {
     private let transport: any WinlinkTransport
     private var buffer = [UInt8]()
     private var pos = 0
@@ -63,7 +63,7 @@ final class TransportReader {
 
     /// Trims whitespace and strips stray NUL bytes (Go: cleanString,
     /// ported 1:1 including the drop-last-two quirk on a trailing NUL).
-    static func cleanString(_ string: String) -> String {
+    nonisolated static func cleanString(_ string: String) -> String {
         var str = string.trimmingCharacters(in: .whitespacesAndNewlines)
         if str.first == "\0" {
             str.removeFirst()
