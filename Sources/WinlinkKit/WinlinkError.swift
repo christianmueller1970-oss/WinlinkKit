@@ -15,6 +15,8 @@ public enum WinlinkError: Error, Sendable, Equatable {
     case validation(field: String, reason: String)
     /// The remote reported an error (a `*`-prefixed protocol line).
     case remoteError(String)
+    /// An operation did not complete in time (VARA dial, buffer drain, …).
+    case timeout(String)
 }
 
 extension WinlinkError {
