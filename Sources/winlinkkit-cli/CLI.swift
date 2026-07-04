@@ -18,6 +18,10 @@ struct CLI {
           WL_PASSWORD   your Winlink account password (required)
           WL_LOCATOR    your Maidenhead locator (optional)
           WL_MAILBOX    mailbox directory (default: ./mailbox)
+          WL_CMS_HOST   CMS host (default: server.winlink.org; production
+                        only accepts registered client types — use
+                        cms-z.winlink.org for testing)
+          WL_CMS_PORT   CMS port (default: 8772)
         """
 
     static func main() async {
@@ -78,8 +82,13 @@ struct CLI {
     static func exchange(
         callsign: String, password: String, locator: String, mailbox: DirectoryMailbox
     ) async throws {
-        print("Connecting to \(TelnetTransport.cmsHost):\(TelnetTransport.cmsPort) ...")
-        let transport = try await TelnetTransport.dialCMS(mycall: callsign)
+        let env = ProcessInfo.processInfo.environment
+        let host = env["WL_CMS_HOST"] ?? TelnetTransport.cmsHost
+        let port = env["WL_CMS_PORT"].flatMap(UInt16.init) ?? TelnetTransport.cmsPort
+
+        print("Connecting to \(host):\(port) ...")
+        let transport = try await TelnetTransport.dialCMS(
+            mycall: callsign, host: host, port: port)
         print("Connected, starting B2F exchange")
 
         let session = B2FSession(

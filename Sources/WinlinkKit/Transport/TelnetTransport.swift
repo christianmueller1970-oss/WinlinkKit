@@ -32,14 +32,18 @@ public actor TelnetTransport: WinlinkTransport {
 
     /// Dials a random CMS through server.winlink.org, retrying up to
     /// 4 times in case an unavailable CMS is hit (Go: DialCMS).
+    ///
+    /// Production CMS only accepts registered client types (SID names);
+    /// pass `host: "cms-z.winlink.org"` to use the test server.
     public static func dialCMS(
-        mycall: String, timeout: TimeInterval = 30
+        mycall: String, host: String = cmsHost, port: UInt16 = cmsPort,
+        timeout: TimeInterval = 30
     ) async throws -> TelnetTransport {
         var lastError: any Error = WinlinkError.connectionClosed
         for _ in 0..<4 {
             do {
                 return try await dial(
-                    host: cmsHost, port: cmsPort,
+                    host: host, port: port,
                     mycall: mycall, password: cmsPassword, timeout: timeout)
             } catch {
                 lastError = error
