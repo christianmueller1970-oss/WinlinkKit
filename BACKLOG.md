@@ -16,6 +16,20 @@ they will likely be tackled. Reference implementations for almost everything:
 
 ## Radio transports (the core of stage 2)
 
+> **Strategy decision (Chris, 2026-07-05):** Ham-Tools only ships features
+> that run fully native on the Mac — no companion hardware (Pi/Windows box).
+> Therefore Ham-Tools integrates **telnet only** for now. The radio
+> transports below stay in WinlinkKit (complete, unit-tested, usable via
+> the CLI) but are not wired into Ham-Tools until a native modem path
+> exists. For RF, Chris uses his existing Winlink setup on Windows.
+>
+> - Native HF path: **port ardopcf's audio layer to CoreAudio/PortAudio**
+>   (separate C project, optional, long-term). VARA is closed-source
+>   Windows-only — no native path, ever.
+> - Native VHF path: **Direwolf builds natively on macOS** → the AX.25/AGWPE
+>   transport would be fully native (radio + audio interface only, no
+>   extra computer).
+
 - [x] **VARA HF/FM** — TCP command port 8300 (FM: 8301) + data port,
       `wl2k-go/transport/varahf`. Live RF test to HB9AK succeeded 2026-07-05.
 - [x] **ARDOP** — TCP 8515/8516, `wl2k-go/transport/ardop`. TCP only (no
