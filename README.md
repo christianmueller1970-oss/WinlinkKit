@@ -15,7 +15,10 @@ Core logic is ported from [wl2k-go](https://github.com/la5nta/wl2k-go)
 - ✅ LZHUF compression (bit-exact against the wl2k-go golden files)
 - ✅ Winlink Message Structure (ISO-8859-1, RFC 2047 headers, attachments)
 - ✅ Telnet transport with CMS prompt login
-- 🔜 Stage 2: radio transports (VARA, ARDOP, AX.25/AGWPE), see [BACKLOG.md](BACKLOG.md)
+- ✅ VARA HF/FM transport (live-tested over RF)
+- ✅ ARDOP transport (TCP; control + framed data channel)
+- ✅ rigctld client for PTT and dial frequency
+- 🔜 Stage 2 remainder: AX.25/AGWPE, listen/P2P mode, see [BACKLOG.md](BACKLOG.md)
 
 > **Note:** the production CMS (`server.winlink.org`) only accepts registered
 > client types. Until WinlinkKit is registered with the Winlink Development Team,

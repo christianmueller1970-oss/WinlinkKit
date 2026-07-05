@@ -15,11 +15,16 @@ struct CLI {
           winlinkkit-cli vara-check [--transport vara|varafm]
               Connect to the VARA modem program, print its version and
               disconnect. No RF transmission — safe wiring test.
+          winlinkkit-cli ardop-check
+              Connect to the ARDOP TNC, print its version and
+              disconnect. No RF transmission — safe wiring test.
 
         Connection options:
-          --transport <name>    telnet (default), vara (HF) or varafm
-          --gateway <callsign>  RMS gateway to dial (required for VARA)
-          --bandwidth <hz>      VARA HF bandwidth: 500, 2300 or 2750 (optional)
+          --transport <name>    telnet (default), vara (HF), varafm or ardop
+          --gateway <callsign>  RMS gateway to dial (required for VARA/ARDOP)
+          --bandwidth <value>   VARA HF: 500, 2300 or 2750 Hz
+                                ARDOP: 200, 500, 1000 or 2000, with optional
+                                MAX (default) or FORCED suffix
 
         Environment:
           WL_CALLSIGN        your callsign (required)
@@ -33,6 +38,12 @@ struct CLI {
           WL_VARA_HOST       VARA modem host (default: localhost)
           WL_VARA_CMD_PORT   VARA command port (default: 8300)
           WL_VARA_DATA_PORT  VARA data port (default: 8301)
+          WL_ARDOP_HOST      ARDOP TNC host (default: localhost)
+          WL_ARDOP_CTRL_PORT ARDOP control port (default: 8515)
+          WL_ARDOP_DATA_PORT ARDOP data port (default: 8516)
+          WL_RIGCTLD_HOST    if set, key PTT via rigctld at this host
+                             (ARDOP only; VARA keys the radio itself)
+          WL_RIGCTLD_PORT    rigctld port (default: 4532)
         """
 
     static func main() async {
@@ -61,6 +72,10 @@ struct CLI {
         if command == "vara-check" {
             try await varaCheck(
                 mode: options["transport"] == "varafm" ? .fm : .hf, callsign: callsign)
+            return
+        }
+        if command == "ardop-check" {
+            try await ardopCheck(callsign: callsign, locator: env["WL_LOCATOR"] ?? "")
             return
         }
 
@@ -105,6 +120,10 @@ struct CLI {
             try await varaExchange(
                 mode: .fm, callsign: callsign, password: password,
                 locator: locator, mailbox: mailbox, options: options)
+        case "ardop":
+            try await ardopExchange(
+                callsign: callsign, password: password, locator: locator,
+                mailbox: mailbox, options: options)
         case let transport:
             fail("Unknown transport '\(transport)'\n\n\(usage)")
         }
@@ -175,6 +194,93 @@ struct CLI {
             throw error
         }
         await modem.close()
+    }
+
+    static func ardopExchange(
+        callsign: String, password: String, locator: String,
+        mailbox: DirectoryMailbox, options: [String: String]
+    ) async throws {
+        guard let gateway = options["gateway"]?.uppercased() else {
+            fail("--gateway <callsign> is required for ARDOP\n\n\(usage)")
+        }
+        var bandwidth: ArdopBandwidth?
+        if let value = options["bandwidth"] {
+            guard let parsed = ArdopBandwidth(parsing: value) else {
+                fail("Invalid ARDOP bandwidth '\(value)' (200|500|1000|2000, optional MAX/FORCED suffix)")
+            }
+            bandwidth = parsed
+        }
+
+        let config = ardopConfig()
+        print("Connecting to ARDOP TNC at \(config.host):\(config.controlPort) ...")
+        let modem = try await ArdopModem.connect(
+            mycall: callsign, gridSquare: locator, config: config)
+        await modem.setLogLine { print("  ardop: \($0)") }
+
+        do {
+            try await attachRigctldPTT(to: modem)
+            if let version = try? await modem.version() {
+                print("TNC: \(version)")
+            }
+            print("Dialing \(gateway) — this can take a while over RF ...")
+            let link = try await modem.dial(gateway, bandwidth: bandwidth)
+            print("Link established, starting B2F exchange")
+
+            try await runSession(
+                over: link, targetcall: gateway,
+                callsign: callsign, password: password, locator: locator,
+                mailbox: mailbox)
+        } catch {
+            await modem.close()
+            throw error
+        }
+        await modem.close()
+    }
+
+    /// Connects to the TNC, prints its version and disconnects.
+    /// No ARQCALL is issued, so nothing is transmitted over RF.
+    static func ardopCheck(callsign: String, locator: String) async throws {
+        let config = ardopConfig()
+        print("Connecting to ARDOP TNC at \(config.host):\(config.controlPort) ...")
+        let modem = try await ArdopModem.connect(
+            mycall: callsign, gridSquare: locator, config: config)
+        await modem.setLogLine { print("  ardop: \($0)") }
+        do {
+            let version = try await modem.version()
+            print("OK — \(version), control and data channels connected.")
+        } catch {
+            await modem.close()
+            throw error
+        }
+        await modem.close()
+    }
+
+    /// Keys PTT via rigctld when WL_RIGCTLD_HOST is set. ARDOP does
+    /// not key the radio itself (unlike VARA, which has its own CAT
+    /// configuration).
+    static func attachRigctldPTT(to modem: ArdopModem) async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let host = env["WL_RIGCTLD_HOST"], !host.isEmpty else { return }
+        let port = env["WL_RIGCTLD_PORT"].flatMap(UInt16.init) ?? RigctldClient.defaultPort
+
+        print("Keying PTT via rigctld at \(host):\(port)")
+        let rig = try await RigctldClient.connect(host: host, port: port)
+        await modem.setPTTHandler { on in
+            do {
+                try await rig.setPTT(on)
+            } catch {
+                fputs("rigctld PTT \(on ? "on" : "off") failed: \(error)\n", stderr)
+            }
+        }
+    }
+
+    static func ardopConfig() -> ArdopModem.Config {
+        let env = ProcessInfo.processInfo.environment
+        var config = ArdopModem.Config()
+        config.host = env["WL_ARDOP_HOST"] ?? config.host
+        config.controlPort = env["WL_ARDOP_CTRL_PORT"].flatMap(UInt16.init) ?? config.controlPort
+        config.dataPort = env["WL_ARDOP_DATA_PORT"].flatMap(UInt16.init) ?? config.dataPort
+        return config
     }
 
     static func varaConfig() -> VaraModem.Config {

@@ -16,12 +16,13 @@ they will likely be tackled. Reference implementations for almost everything:
 
 ## Radio transports (the core of stage 2)
 
-- [ ] **VARA HF/FM** — TCP command port 8300 (FM: 8301) + data port,
-      `wl2k-go/transport/varahf`. Most relevant for HB9AF use.
-- [ ] **ARDOP** — TCP 8515/8516, `wl2k-go/transport/ardop`.
+- [x] **VARA HF/FM** — TCP command port 8300 (FM: 8301) + data port,
+      `wl2k-go/transport/varahf`. Live RF test to HB9AK succeeded 2026-07-05.
+- [x] **ARDOP** — TCP 8515/8516, `wl2k-go/transport/ardop`. TCP only (no
+      serial CRC framing); heard-station tracking and listen mode not ported.
 - [ ] **AX.25 via AGWPE/Direwolf** — `wl2k-go/transport/ax25/agwpe`.
-- [ ] **rigctld PTT/frequency control** (Hamlib network protocol) — needed by
-      all radio transports; keep it a separate small module.
+- [x] **rigctld PTT/frequency control** (Hamlib network protocol) —
+      `RigctldClient`, wired to ARDOP PTT in the CLI via WL_RIGCTLD_HOST.
 - [ ] Transport-level niceties the session already anticipates but ignores:
       robust-mode toggling (Go: `transport.Robust`), TX buffer draining
       (Go: `transport.Flusher`/`TxBuffer`) for accurate over-the-air progress.
