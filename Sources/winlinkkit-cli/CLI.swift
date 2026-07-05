@@ -12,6 +12,9 @@ struct CLI {
               Queue a message in the mailbox, then exchange with the CMS.
           winlinkkit-cli fetch [connection]
               Exchange with the CMS (sends queued, fetches pending messages).
+          winlinkkit-cli vara-check [--transport vara|varafm]
+              Connect to the VARA modem program, print its version and
+              disconnect. No RF transmission — safe wiring test.
 
         Connection options:
           --transport <name>    telnet (default), vara (HF) or varafm
@@ -53,6 +56,14 @@ struct CLI {
         guard let callsign = env["WL_CALLSIGN"], !callsign.isEmpty else {
             fail("WL_CALLSIGN is not set")
         }
+        let options = parseOptions(args)
+
+        if command == "vara-check" {
+            try await varaCheck(
+                mode: options["transport"] == "varafm" ? .fm : .hf, callsign: callsign)
+            return
+        }
+
         guard let password = env["WL_PASSWORD"], !password.isEmpty else {
             fail("WL_PASSWORD is not set")
         }
@@ -60,8 +71,6 @@ struct CLI {
         let mailboxRoot = URL(
             fileURLWithPath: env["WL_MAILBOX"] ?? "mailbox", isDirectory: true)
         let mailbox = DirectoryMailbox(root: mailboxRoot)
-
-        let options = parseOptions(args)
         switch command {
         case "send":
             guard let to = options["to"], let subject = options["subject"],
@@ -127,12 +136,7 @@ struct CLI {
             fail("--gateway <callsign> is required for VARA\n\n\(usage)")
         }
 
-        let env = ProcessInfo.processInfo.environment
-        var config = VaraModem.Config()
-        config.host = env["WL_VARA_HOST"] ?? config.host
-        config.commandPort = env["WL_VARA_CMD_PORT"].flatMap(UInt16.init) ?? config.commandPort
-        config.dataPort = env["WL_VARA_DATA_PORT"].flatMap(UInt16.init) ?? config.dataPort
-
+        let config = varaConfig()
         print("Connecting to VARA modem at \(config.host):\(config.commandPort) ...")
         let modem = try await VaraModem.connect(mode: mode, mycall: callsign, config: config)
         await modem.setLogLine { print("  vara: \($0)") }
@@ -154,6 +158,32 @@ struct CLI {
             throw error
         }
         await modem.close()
+    }
+
+    /// Connects to the modem program, prints its version and disconnects.
+    /// No CONNECT is issued, so nothing is transmitted over RF.
+    static func varaCheck(mode: VaraModem.Mode, callsign: String) async throws {
+        let config = varaConfig()
+        print("Connecting to VARA modem at \(config.host):\(config.commandPort) ...")
+        let modem = try await VaraModem.connect(mode: mode, mycall: callsign, config: config)
+        await modem.setLogLine { print("  vara: \($0)") }
+        do {
+            let version = try await modem.version()
+            print("OK — VARA \(version), command and data channels connected.")
+        } catch {
+            await modem.close()
+            throw error
+        }
+        await modem.close()
+    }
+
+    static func varaConfig() -> VaraModem.Config {
+        let env = ProcessInfo.processInfo.environment
+        var config = VaraModem.Config()
+        config.host = env["WL_VARA_HOST"] ?? config.host
+        config.commandPort = env["WL_VARA_CMD_PORT"].flatMap(UInt16.init) ?? config.commandPort
+        config.dataPort = env["WL_VARA_DATA_PORT"].flatMap(UInt16.init) ?? config.dataPort
+        return config
     }
 
     static func runSession(
