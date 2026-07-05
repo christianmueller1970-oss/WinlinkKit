@@ -38,8 +38,15 @@ public actor TCPTransport: WinlinkTransport {
                 case .cancelled:
                     connection.stateUpdateHandler = nil
                     cont.resume(throwing: WinlinkError.connectionClosed)
+                case .waiting(let error):
+                    // NWConnection retries on "waiting" (e.g. connection
+                    // refused) until the network changes. Fail fast instead,
+                    // like Go's net.Dial — retrying is the caller's job.
+                    connection.stateUpdateHandler = nil
+                    connection.cancel()
+                    cont.resume(throwing: error)
                 default:
-                    break // .setup, .preparing, .waiting — keep waiting.
+                    break // .setup, .preparing — keep waiting.
                 }
             }
             connection.start(queue: .global())
