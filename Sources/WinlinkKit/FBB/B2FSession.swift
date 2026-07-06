@@ -476,7 +476,6 @@ public final class B2FSession {
         }
 
         let answers = String(proposals.map(\.answer.rawValue))
-        logLine?(">FS \(answers)")
         try await write("FS \(answers)" + protocolCR)
     }
 
