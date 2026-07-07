@@ -40,14 +40,18 @@ public protocol MailboxHandler: Sendable {
 ///
 /// Layout inside the root directory:
 /// - `out/`  — outbound messages as `<MID>.b2f` (Winlink Message format)
-/// - `in/`   — received messages, written as `<MID>.b2f`
+/// - `in/`   — received messages, written as `<MID>.b2f`; clients may
+///   file them into subdirectories or an optional `trash/` next to it —
+///   duplicate detection covers both
 /// - `sent/` — outbound messages are moved here once sent
 public actor DirectoryMailbox: MailboxHandler {
+    private let root: URL
     private let outbox: URL
     private let inbox: URL
     private let sentbox: URL
 
     public init(root: URL) {
+        self.root = root
         self.outbox = root.appendingPathComponent("out", isDirectory: true)
         self.inbox = root.appendingPathComponent("in", isDirectory: true)
         self.sentbox = root.appendingPathComponent("sent", isDirectory: true)
@@ -96,9 +100,20 @@ public actor DirectoryMailbox: MailboxHandler {
     }
 
     public func inboundAnswer(for proposal: Proposal) -> ProposalAnswer {
-        let existing = inbox.appendingPathComponent("\(proposal.messageID).b2f")
-        if FileManager.default.fileExists(atPath: existing.path) {
-            return .reject
+        // A message counts as "already received" anywhere below `in/`
+        // (clients may file messages into subdirectories) and in an
+        // optional `trash/` directory next to it. Deliberately NOT
+        // `out/`/`sent/`: a message sent to oneself must still be
+        // accepted inbound.
+        let filename = "\(proposal.messageID).b2f"
+        let trash = root.appendingPathComponent("trash", isDirectory: true)
+        for dir in [inbox, trash] {
+            guard let enumerator = FileManager.default.enumerator(
+                at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+            else { continue }
+            for case let url as URL in enumerator where url.lastPathComponent == filename {
+                return .reject
+            }
         }
         return .accept
     }
