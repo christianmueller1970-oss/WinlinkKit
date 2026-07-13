@@ -7,12 +7,13 @@ they will likely be tackled. Reference implementations for almost everything:
 
 ## Administrative
 
-- [ ] **Register the client type** with the Winlink Development Team so the
+- [x] **Register the client type** with the Winlink Development Team so the
       `WinlinkKit` SID name is accepted on production CMS servers
-      (`server.winlink.org`). Until then: `cms-z.winlink.org` only.
-      Draft email: see `docs/winlink-registration-draft.md`.
-- [ ] Complete the live receive test (was blocked by a Winlink-side delivery
-      lag on 2026-07-04; send path is verified).
+      (`server.winlink.org`). Done: `WinlinkKit` and `Skywave` SIDs live on
+      production since 2026-07-13 (Rob, WDT); both confirmed the same day —
+      Skywave via app round trip, WinlinkKit via `winlinkkit-cli` fetch.
+- [x] Complete the live receive test — verified 2026-07-13 on production via
+      the Skywave app: send to external and receive from external both worked.
 
 ## Radio transports (the core of stage 2)
 
