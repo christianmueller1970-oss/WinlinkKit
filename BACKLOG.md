@@ -24,9 +24,11 @@ they will likely be tackled. Reference implementations for almost everything:
 > the CLI) but are not wired into Ham-Tools until a native modem path
 > exists. For RF, Chris uses his existing Winlink setup on Windows.
 >
-> - Native HF path: **port ardopcf's audio layer to CoreAudio/PortAudio**
->   (separate C project, optional, long-term). VARA is closed-source
->   Windows-only — no native path, ever.
+> - Native HF path: ✅ **DONE 2026-07-14** — ardopcf ported to macOS
+>   (PortAudio backend, fork in `~/Developer/ardopcf`, branch
+>   `macos-port`); `ArdopProcess` runs it as a managed child, Skywave
+>   bundles the universal binary. VARA is closed-source Windows-only —
+>   no native path, ever.
 > - Native VHF path: **Direwolf builds natively on macOS** → the AX.25/AGWPE
 >   transport would be fully native (radio + audio interface only, no
 >   extra computer).
