@@ -87,6 +87,10 @@ public actor ArdopProcess {
         collector?.recentLines ?? []
     }
 
+    /// PID of the running child, e.g. for a synchronous SIGINT from an
+    /// app-termination hook; nil before start and after stop.
+    public private(set) var processIdentifier: Int32?
+
     /// Launches ardopcf and returns once its control port accepts a TCP
     /// connection (probe connection, closed immediately).
     public func start(readyTimeout: Duration = .seconds(10)) async throws {
@@ -135,6 +139,7 @@ public actor ArdopProcess {
             throw ArdopProcessError.launchFailed(error.localizedDescription)
         }
         self.process = process
+        self.processIdentifier = process.processIdentifier
 
         // Wait for the control port to accept a connection.
         let deadline = ContinuousClock.now + readyTimeout
@@ -158,6 +163,7 @@ public actor ArdopProcess {
     public func stop(gracePeriod: Duration = .seconds(3)) async {
         guard let process else { return }
         self.process = nil
+        self.processIdentifier = nil
 
         if process.isRunning {
             process.interrupt()  // SIGINT: ardopcf shuts down cleanly
