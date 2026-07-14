@@ -41,6 +41,9 @@ struct CLI {
           WL_ARDOP_HOST      ARDOP TNC host (default: localhost)
           WL_ARDOP_CTRL_PORT ARDOP control port (default: 8515)
           WL_ARDOP_DATA_PORT ARDOP data port (default: 8516)
+          WL_ARDOP_EXEC      spawn this ardopcf binary as a managed child
+          WL_ARDOP_CAPTURE   audio capture device for spawned ardopcf
+          WL_ARDOP_PLAYBACK  audio playback device for spawned ardopcf
           WL_RIGCTLD_HOST    if set, key PTT via rigctld at this host
                              (ARDOP only; VARA keys the radio itself)
           WL_RIGCTLD_PORT    rigctld port (default: 4532)
@@ -211,6 +214,8 @@ struct CLI {
             bandwidth = parsed
         }
 
+        let process = try await spawnArdopIfRequested()
+
         let config = ardopConfig()
         print("Connecting to ARDOP TNC at \(config.host):\(config.controlPort) ...")
         let modem = try await ArdopModem.connect(
@@ -232,14 +237,18 @@ struct CLI {
                 mailbox: mailbox)
         } catch {
             await modem.close()
+            await process?.stop()
             throw error
         }
         await modem.close()
+        await process?.stop()
     }
 
     /// Connects to the TNC, prints its version and disconnects.
     /// No ARQCALL is issued, so nothing is transmitted over RF.
     static func ardopCheck(callsign: String, locator: String) async throws {
+        let process = try await spawnArdopIfRequested()
+
         let config = ardopConfig()
         print("Connecting to ARDOP TNC at \(config.host):\(config.controlPort) ...")
         let modem = try await ArdopModem.connect(
@@ -250,9 +259,34 @@ struct CLI {
             print("OK — \(version), control and data channels connected.")
         } catch {
             await modem.close()
+            await process?.stop()
             throw error
         }
         await modem.close()
+        await process?.stop()
+    }
+
+    /// Spawns a bundled/managed ardopcf when WL_ARDOP_EXEC is set,
+    /// mirroring what Skywave does with the binary in its app bundle.
+    /// WL_ARDOP_CAPTURE / WL_ARDOP_PLAYBACK select the audio devices.
+    static func spawnArdopIfRequested() async throws -> ArdopProcess? {
+        let env = ProcessInfo.processInfo.environment
+        guard let exec = env["WL_ARDOP_EXEC"], !exec.isEmpty else { return nil }
+
+        var launch = ArdopLaunchConfig()
+        launch.controlPort = env["WL_ARDOP_CTRL_PORT"].flatMap(UInt16.init) ?? launch.controlPort
+        launch.captureDevice = env["WL_ARDOP_CAPTURE"] ?? launch.captureDevice
+        launch.playbackDevice = env["WL_ARDOP_PLAYBACK"] ?? launch.playbackDevice
+
+        print("Spawning ardopcf: \(exec) \(launch.arguments().joined(separator: " "))")
+        let process = ArdopProcess(
+            executable: URL(fileURLWithPath: exec), config: launch)
+        Task {
+            for await line in process.logLines { print("  ardopcf: \(line)") }
+        }
+        try await process.start()
+        print("ardopcf is up, control port \(launch.controlPort) reachable.")
+        return process
     }
 
     /// Keys PTT via rigctld when WL_RIGCTLD_HOST is set. ARDOP does
