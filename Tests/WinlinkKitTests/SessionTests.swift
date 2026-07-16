@@ -123,6 +123,31 @@ actor MemoryMailbox: MailboxHandler {
     }
 }
 
+/// Accepts everything but fails on the n-th inbound message — simulates
+/// a mid-batch error (disk full, decode bug) to pin down that earlier
+/// messages stay committed.
+private actor FailingMailbox: MailboxHandler {
+    var inbox = [B2Message]()
+    private var failOnInboundNumber: Int
+
+    init(failOnInboundNumber: Int) {
+        self.failOnInboundNumber = failOnInboundNumber
+    }
+
+    func prepare() {}
+    func outboundMessages(for forwarders: [Address]) -> [B2Message] { [] }
+    func markSent(_ mid: String, rejected: Bool) {}
+    func markDeferred(_ mid: String) {}
+    func inboundAnswer(for proposal: Proposal) -> ProposalAnswer { .accept }
+
+    func processInbound(_ message: B2Message) throws {
+        if inbox.count + 1 == failOnInboundNumber {
+            throw WinlinkError.malformedInput("mailbox failure (test)")
+        }
+        inbox.append(message)
+    }
+}
+
 private let localSIDLine = "[WinlinkKit-\(WinlinkKit.version)-B2FHM$]"
 
 // MARK: - Scripted CMS sessions (Go: wl2k_test.go)
@@ -439,6 +464,44 @@ private let localSIDLine = "[WinlinkKit-\(WinlinkKit.version)-B2FHM$]"
         #expect(remaining.isEmpty)
         let inbox = await masterBox.inbox
         #expect(inbox.count == 1)
+    }
+
+    /// An error in the middle of an inbound batch must not lose the
+    /// messages that already arrived: they stay committed, and
+    /// `session.stats` reports them even though `exchange` throws.
+    @Test func sessionPartialInboundBatchKeepsEarlierMessages() async throws {
+        let (clientEnd, masterEnd) = await PipeTransport.pair()
+
+        let masterBox = MemoryMailbox()
+        for n in 1...2 {
+            var message = B2Message(mycall: "N0CALL")
+            message.addTo("LA5NTA")
+            message.setSubject("Message \(n)")
+            message.setBody("Body \(n)\n")
+            await masterBox.addOutbound(message)
+        }
+
+        // The master unwinds with an error too (the client echoes the
+        // failure and closes) — irrelevant here.
+        async let masterDone: Void = {
+            let s = B2FSession(
+                mycall: "N0CALL", targetcall: "LA5NTA", locator: "JO39EQ", mailbox: masterBox)
+            s.isMaster = true
+            _ = try? await s.exchange(over: masterEnd)
+        }()
+
+        let clientBox = FailingMailbox(failOnInboundNumber: 2)
+        let session = B2FSession(
+            mycall: "LA5NTA", targetcall: "N0CALL", locator: "JO39EQ", mailbox: clientBox)
+        await #expect(throws: WinlinkError.self) {
+            try await session.exchange(over: clientEnd)
+        }
+        await masterDone
+
+        // The first message survived the second one's failure.
+        let inbox = await clientBox.inbox
+        try #require(inbox.count == 1)
+        #expect(session.stats.received == [inbox[0].mid])
     }
 }
 

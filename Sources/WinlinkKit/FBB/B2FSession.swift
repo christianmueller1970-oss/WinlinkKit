@@ -7,6 +7,11 @@ public struct TrafficStats: Sendable, Equatable {
     public internal(set) var received: [String] = []
     /// MIDs of successfully sent messages.
     public internal(set) var sent: [String] = []
+
+    public init(received: [String] = [], sent: [String] = []) {
+        self.received = received
+        self.sent = sent
+    }
 }
 
 /// A B2F exchange session (Go: Session).
@@ -71,7 +76,11 @@ public final class B2FSession {
     private var pendingMessages: [String: PendingMessage] = [:]
 
     private var remoteNoMsgs = false // True if last remote turn had no more messages
-    private var stats = TrafficStats()
+
+    /// Traffic of this session so far. Inbound messages are committed to
+    /// the mailbox one at a time, so when `exchange(over:)` throws this
+    /// still reflects everything that made it through before the error.
+    public private(set) var stats = TrafficStats()
 
     private var transport: (any WinlinkTransport)?
     private var reader: TransportReader?
