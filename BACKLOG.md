@@ -37,6 +37,9 @@ they will likely be tackled. Reference implementations for almost everything:
       `wl2k-go/transport/varahf`. Live RF test to HB9AK succeeded 2026-07-05.
 - [x] **ARDOP** — TCP 8515/8516, `wl2k-go/transport/ardop`. TCP only (no
       serial CRC framing); heard-station tracking and listen mode not ported.
+      **Live RF test passed 2026-07-18** (Skywave milestone H6): bundled
+      ardopcf → HB9AK via 80 m, CI-V QSY + restore, CAT PTT, full B2F
+      exchange, ARQ quality 99, 0 failed decodes.
 - [ ] **AX.25 via AGWPE/Direwolf** — `wl2k-go/transport/ax25/agwpe`.
 - [x] **rigctld PTT/frequency control** (Hamlib network protocol) —
       `RigctldClient`, wired to ARDOP PTT in the CLI via WL_RIGCTLD_HOST.
