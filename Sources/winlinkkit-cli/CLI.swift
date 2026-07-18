@@ -18,6 +18,11 @@ struct CLI {
           winlinkkit-cli ardop-check
               Connect to the ARDOP TNC, print its version and
               disconnect. No RF transmission — safe wiring test.
+          winlinkkit-cli civ --port /dev/cu.usbserial-… [--baud 115200]
+              [--addr 98] [--freq <hz>] [--mode usb-d]
+              Read (and with --freq/--mode set) the rig's dial frequency
+              and operating mode over Icom CI-V. No RF transmission —
+              safe CAT wiring test.
 
         Connection options:
           --transport <name>    telnet (default), vara (HF), varafm or ardop
@@ -65,6 +70,11 @@ struct CLI {
             exit(64)
         }
         let command = args.removeFirst()
+
+        if command == "civ" {
+            try await civCheck(options: parseOptions(args))
+            return
+        }
 
         let env = ProcessInfo.processInfo.environment
         guard let callsign = env["WL_CALLSIGN"], !callsign.isEmpty else {
@@ -264,6 +274,51 @@ struct CLI {
         }
         await modem.close()
         await process?.stop()
+    }
+
+    /// Talks CI-V to the rig on a serial port: reads frequency and
+    /// mode, optionally sets them, and reads back the result. Nothing
+    /// is transmitted over RF.
+    static func civCheck(options: [String: String]) async throws {
+        guard let port = options["port"] else {
+            fail("civ requires --port /dev/cu.…\n\n\(usage)")
+        }
+        let baud = options["baud"].flatMap(Int.init) ?? 115200
+        guard let address = UInt8(options["addr"] ?? "98", radix: 16) else {
+            fail("Invalid CI-V address '\(options["addr"] ?? "")' (hex, e.g. 98)")
+        }
+
+        print(
+            "Opening \(port) (\(baud) Bd, CI-V address "
+                + String(format: "%02X", address) + ") ...")
+        let civ = try await CIVClient.connect(
+            serialPort: port, baud: baud, radioAddress: address)
+        do {
+            let hz = try await civ.frequency()
+            let mode = try await civ.operatingMode()
+            print("Rig: \(hz) Hz, \(mode)")
+
+            if let target = options["freq"].flatMap(Int.init) {
+                try await civ.setFrequency(target)
+                print("Set frequency to \(target) Hz")
+            }
+            if let modeName = options["mode"] {
+                guard modeName.lowercased() == "usb-d" else {
+                    fail("Unsupported --mode '\(modeName)' (only usb-d)")
+                }
+                try await civ.setOperatingMode(.usbData)
+                print("Set mode to USB-D")
+            }
+            if options["freq"] != nil || options["mode"] != nil {
+                let hz = try await civ.frequency()
+                let mode = try await civ.operatingMode()
+                print("Rig now: \(hz) Hz, \(mode)")
+            }
+        } catch {
+            await civ.close()
+            throw error
+        }
+        await civ.close()
     }
 
     /// Spawns a bundled/managed ardopcf when WL_ARDOP_EXEC is set,

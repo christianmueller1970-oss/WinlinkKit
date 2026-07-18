@@ -40,6 +40,12 @@ they will likely be tackled. Reference implementations for almost everything:
 - [ ] **AX.25 via AGWPE/Direwolf** — `wl2k-go/transport/ax25/agwpe`.
 - [x] **rigctld PTT/frequency control** (Hamlib network protocol) —
       `RigctldClient`, wired to ARDOP PTT in the CLI via WL_RIGCTLD_HOST.
+- [x] **CI-V frequency/mode control** (Icom CAT on the rig's serial
+      port) — `CIVClient` over the new `SerialTransport`; reads/sets
+      dial frequency and mode incl. data mode (cmd 26 00). Powers
+      Skywave's gateway-picker QSY (set before ardopcf starts, restore
+      after it stops). `winlinkkit-cli civ` is the wiring test.
+      Added 2026-07-18.
 - [ ] Transport-level niceties the session already anticipates but ignores:
       robust-mode toggling (Go: `transport.Robust`), TX buffer draining
       (Go: `transport.Flusher`/`TxBuffer`) for accurate over-the-air progress.
