@@ -72,8 +72,28 @@ they will likely be tackled. Reference implementations for almost everything:
 
 ## Winlink ecosystem services (HTTP, not B2F)
 
-- [ ] **RMS/gateway list** via the Winlink Web Services API (channel list by
+- [x] **RMS/gateway list** via the Winlink Web Services API (channel list by
       band/mode/distance) so the app can offer "nearest VARA gateway".
+      `GatewayWebService` queries `gateway/proximity`, one request per mode;
+      `Maidenhead` supplies distance and bearing, `GatewayBandwidth` maps the
+      `Baud` field. `winlinkkit-cli gateways --raw` is the probe. Access key
+      granted by Rob (WDT) 2026-08-07 for `GatewayChannelReport`,
+      `GatewayListing` and `GatewayProximity`, with the explicit condition
+      that the endpoints be queried sparingly — hence the rate limit inside
+      the actor rather than in the client.
+- [ ] **Confirm the `Mode` integer empirically.** The two published sources
+      for the enum (api.winlink.org metadata and ARSFI's
+      `WinlinkWebServices.dtos.cs`) disagree on where `AnyAll` sits, so the
+      field is carried as `rawMode` and never read. `observedModeCodes()`
+      collects what each requested mode actually returns; once that mapping
+      is confirmed over a few refreshes, the per-mode requests can collapse
+      into a single `AnyAll` one.
+- [ ] **`gateway/status.json`** if that permission is ever granted. It
+      reports `SupportedModes` in plain text ("ARDOP 2000"), which would
+      settle both the mode integer and the bandwidth in one go, plus
+      operating hours and antenna — and it needs one request per day instead
+      of one per mode. Pat uses exactly this endpoint. Would slot in behind
+      the existing `GatewayWebService` facade as a second source.
 - [ ] Account existence check / password recovery hints via Web Services.
 
 ## Housekeeping
