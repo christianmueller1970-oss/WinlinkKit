@@ -1,0 +1,18 @@
+{
+  "GatewayList": [],
+  "ResponseStatus": {
+    "ErrorCode": "InvalidAccessKey",
+    "Message": "Invalid access key for this operation",
+    "Errors": [
+      {
+        "ErrorCode": "InvalidAccessKey",
+        "FieldName": "Key",
+        "Message": "Invalid access key for this operation",
+        "Meta": {
+          "PropertyName": "Key",
+          "PropertyValue": "TESTKEY-0123456789ABCDEF"
+        }
+      }
+    ]
+  }
+}

@@ -186,6 +186,29 @@ private actor RequestRecorder {
         }
     }
 
+    /// The live service rejects a bad key as HTTP 400 *with* a populated
+    /// ResponseStatus (verified against api.winlink.org). The body is
+    /// the useful part, so it must win over the bare status code.
+    @Test func rejectedKeyIsReportedAsInvalidAccessKeyNotAsHTTP400() async throws {
+        let (service, _) = try makeService(
+            fixture: "proximity-invalid-key", status: 400)
+
+        let error = await #expect(throws: WinlinkServiceError.self) {
+            try await service.proximity(gridSquare: "JN47PN", modes: [.ardop])
+        }
+
+        #expect(
+            error
+                == .serviceError(
+                    code: "InvalidAccessKey",
+                    message: "Invalid access key for this operation"))
+        // A dead key must stop the automatic refresh, not keep knocking.
+        #expect(error?.isAccessDenied == true)
+        // That answer echoes the submitted key back in Errors[].Meta —
+        // it may never travel on inside an error.
+        #expect(error?.description.contains(Self.key) == false)
+    }
+
     @Test(arguments: [403, 429, 500, 503])
     func nonSuccessStatusesSurfaceAsHTTPStatus(_ status: Int) async throws {
         let (service, _) = try makeService(

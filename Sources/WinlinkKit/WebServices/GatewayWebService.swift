@@ -176,22 +176,25 @@ public actor GatewayWebService {
             body: Data(Self.formEncoded(fields).utf8))
 
         let response = try await fetch(request)
+
+        // A rejected request comes back as HTTP 400 with a populated
+        // ResponseStatus ("InvalidAccessKey"), so decode before judging
+        // the status code — the body says *what* went wrong.
+        //
+        // Only ErrorCode and Message are ever surfaced. The Errors[].Meta
+        // block echoes the submitted key back at us, and that must not
+        // reach a log or the UI.
+        let payload = try? JSONDecoder().decode(ProximityResponse.self, from: response.body)
+        if let status = payload?.responseStatus, let code = status.errorCode, !code.isEmpty {
+            throw WinlinkServiceError.serviceError(
+                code: code, message: status.message ?? "")
+        }
         guard (200..<300).contains(response.status) else {
             throw WinlinkServiceError.httpStatus(response.status)
         }
-
-        let payload: ProximityResponse
-        do {
-            payload = try JSONDecoder().decode(ProximityResponse.self, from: response.body)
-        } catch {
+        guard let payload else {
             throw WinlinkServiceError.malformedResponse(
                 "not a GatewayProximityResponse (\(response.body.count) bytes)")
-        }
-        // ServiceStack answers 200 with a populated ResponseStatus when
-        // the key is wrong or a parameter is rejected.
-        if let status = payload.responseStatus, let code = status.errorCode, !code.isEmpty {
-            throw WinlinkServiceError.serviceError(
-                code: code, message: status.message ?? "")
         }
 
         let records = payload.gatewayList ?? []

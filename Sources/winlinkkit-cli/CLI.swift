@@ -23,6 +23,12 @@ struct CLI {
               Read (and with --freq/--mode set) the rig's dial frequency
               and operating mode over Icom CI-V. No RF transmission —
               safe CAT wiring test.
+          winlinkkit-cli gateways --grid JN47PN [--mode ARDOP]
+              [--max-distance <miles>] [--service PUBLIC] [--hours 24] [--raw]
+              List RMS gateways near a locator via the Winlink Web
+              Services. ONE request per mode — Winlink asks that these
+              endpoints be queried sparingly. --raw prints the untouched
+              JSON answer.
 
         Connection options:
           --transport <name>    telnet (default), vara (HF), varafm or ardop
@@ -52,6 +58,7 @@ struct CLI {
           WL_RIGCTLD_HOST    if set, key PTT via rigctld at this host
                              (ARDOP only; VARA keys the radio itself)
           WL_RIGCTLD_PORT    rigctld port (default: 4532)
+          WL_WEBSERVICE_KEY  Winlink Web Services access key (gateways)
         """
 
     static func main() async {
@@ -73,6 +80,10 @@ struct CLI {
 
         if command == "civ" {
             try await civCheck(options: parseOptions(args))
+            return
+        }
+        if command == "gateways" {
+            try await gatewayList(options: parseOptions(args))
             return
         }
 
@@ -321,6 +332,95 @@ struct CLI {
         await civ.close()
     }
 
+    /// Lists nearby RMS gateways via the Winlink Web Services.
+    ///
+    /// Deliberately fires exactly one request per mode and has no retry:
+    /// Winlink asks that these endpoints be queried sparingly and can
+    /// revoke the token. Never put this in a loop.
+    static func gatewayList(options: [String: String]) async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let key = env["WL_WEBSERVICE_KEY"], !key.isEmpty else {
+            fail("WL_WEBSERVICE_KEY is not set")
+        }
+        guard let grid = options["grid"] ?? env["WL_LOCATOR"], !grid.isEmpty else {
+            fail("gateways requires --grid <locator> (or WL_LOCATOR)\n\n\(usage)")
+        }
+        let home = try Maidenhead(locator: grid)
+
+        let modeName = options["mode"] ?? "ARDOP"
+        let mode = GatewayOperatingMode.allCases.first {
+            $0.rawValue.caseInsensitiveCompare(modeName) == .orderedSame
+        }
+        guard let mode else {
+            let known = GatewayOperatingMode.allCases.map(\.rawValue).joined(separator: ", ")
+            fail("Unknown --mode '\(modeName)' (known: \(known))")
+        }
+        let miles = options["max-distance"].flatMap(Int.init) ?? 0
+        let hours = options["hours"].flatMap(Int.init) ?? 24
+        let serviceCodes = (options["service"] ?? "PUBLIC")
+            .split(separator: ",").map(String.init)
+
+        // --raw taps the seam instead of widening the kit's API.
+        let raw = options["raw"] != nil
+        let upstream = HTTPFetcher.urlSession()
+        let fetch: HTTPFetch = { request in
+            let response = try await upstream(request)
+            if raw {
+                print("HTTP \(response.status)")
+                print(String(decoding: response.body, as: UTF8.self))
+            }
+            return response
+        }
+
+        let service = GatewayWebService(
+            apiKey: key,
+            config: GatewayWebService.Config(userAgent: "winlinkkit-cli"),
+            fetch: fetch)
+
+        print("Querying \(mode.rawValue) gateways near \(home.locator) (one request) ...")
+        let positions = try await service.proximity(
+            gridSquare: home.locator, modes: [mode], serviceCodes: serviceCodes,
+            historyHours: hours, maxDistanceMiles: miles)
+
+        guard !positions.isEmpty else {
+            print("No gateways reported.")
+            return
+        }
+
+        print("")
+        print("Callsign  Grid      Frequency   Baud       Svc     API mi/°   Own km/°")
+        for position in positions.sorted(by: { $0.distanceMiles < $1.distanceMiles }) {
+            // Cross-check the service's distance against our own maths;
+            // the two must agree, otherwise one of them is wrong.
+            var own = "        —"
+            if let there = try? Maidenhead(locator: position.gridSquare) {
+                own = String(
+                    format: "%4.0f/%03.0f", home.distanceKm(to: there),
+                    home.bearingDegrees(to: there))
+            }
+            print(
+                position.callsign.padding(toLength: 9, withPad: " ", startingAt: 0)
+                    + position.gridSquare.padding(toLength: 10, withPad: " ", startingAt: 0)
+                    + String(position.frequencyHz).padding(
+                        toLength: 12, withPad: " ", startingAt: 0)
+                    + position.baud.padding(toLength: 11, withPad: " ", startingAt: 0)
+                    + position.serviceCode.padding(toLength: 8, withPad: " ", startingAt: 0)
+                    + String(format: "%4d/%03d  ", position.distanceMiles,
+                        position.headingDegrees)
+                    + own)
+        }
+
+        // The three unknowns this command exists to answer.
+        let stations = Set(positions.map(\.callsign))
+        let bauds = Set(positions.map(\.baud)).sorted()
+        print("")
+        print("\(positions.count) channels from \(stations.count) stations")
+        print("Baud values seen: \(bauds.map { $0.isEmpty ? "(empty)" : $0 }.joined(separator: ", "))")
+        for (mode, codes) in await service.observedModeCodes() {
+            print("Mode integers for \(mode.rawValue): \(codes.sorted())")
+        }
+    }
+
     /// Spawns a bundled/managed ardopcf when WL_ARDOP_EXEC is set,
     /// mirroring what Skywave does with the binary in its app bundle.
     /// WL_ARDOP_CAPTURE / WL_ARDOP_PLAYBACK select the audio devices.
@@ -414,14 +514,23 @@ struct CLI {
     }
 
     /// Parses `--key value` pairs.
+    /// `--name value` pairs, plus valueless flags such as `--raw`, which
+    /// land as an empty string. A flag directly followed by another
+    /// `--flag` no longer swallows it as its value.
     static func parseOptions(_ args: [String]) -> [String: String] {
         var options = [String: String]()
         var i = 0
         while i < args.count {
-            if args[i].hasPrefix("--"), i + 1 < args.count {
-                options[String(args[i].dropFirst(2))] = args[i + 1]
+            guard args[i].hasPrefix("--") else {
+                i += 1
+                continue
+            }
+            let name = String(args[i].dropFirst(2))
+            if i + 1 < args.count, !args[i + 1].hasPrefix("--") {
+                options[name] = args[i + 1]
                 i += 2
             } else {
+                options[name] = ""
                 i += 1
             }
         }

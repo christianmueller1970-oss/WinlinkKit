@@ -46,9 +46,18 @@ extension WinlinkServiceError: CustomStringConvertible {
     /// of hammering on — a revoked token affects every Skywave user.
     public var isAccessDenied: Bool {
         switch self {
-        case .httpStatus(let status): status == 401 || status == 403 || status == 429
-        case .missingAPIKey: true
-        default: false
+        case .httpStatus(let status):
+            return status == 401 || status == 403 || status == 429
+        case .missingAPIKey:
+            return true
+        case .serviceError(let code, _):
+            // The service rejects a bad key as HTTP 400 with
+            // ErrorCode "InvalidAccessKey" — observed, not documented.
+            let code = code.lowercased()
+            return code.contains("accesskey") || code.contains("unauthorized")
+                || code.contains("forbidden")
+        default:
+            return false
         }
     }
 }
