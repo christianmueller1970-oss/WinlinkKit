@@ -1,0 +1,18 @@
+{
+  "GatewayList": [
+    {
+      "Callsign": "HB9PC",
+      "Gridsquare": "JN36DJ",
+      "Frequency": 7059500.0,
+      "Mode": 6,
+      "Baud": 1200,
+      "ServiceCode": "PUBLIC",
+      "Distance": "160",
+      "Heading": 235
+    },
+    {
+      "Callsign": "HB9RF",
+      "Gridsquare": "JN37SF"
+    }
+  ]
+}
