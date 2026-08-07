@@ -2,13 +2,14 @@ import Foundation
 
 /// The operating modes `gateway/proximity` filters by.
 ///
-/// Always sent as the enum *name*. The service also returns a numeric
-/// `Mode` per record, but the two published sources for that enum
-/// (api.winlink.org metadata and ARSFI's `WinlinkWebServices.dtos.cs`)
-/// disagree on where `AnyAll` sits, so the integers are off by one
-/// between them. Mistaking VARA for ARDOP would mean the wrong
-/// bandwidth and the wrong dial frequency, so we never read them —
-/// Pat ignores the field for the same reason.
+/// Always sent as the enum *name*: this enum has no explicit numeric
+/// values, and the two published sources for it (api.winlink.org
+/// metadata and ARSFI's `WinlinkWebServices.dtos.cs`) disagree on where
+/// `AnyAll` sits, so its ordinals are not safe to send.
+///
+/// Not to be confused with the `Mode` a record comes *back* with —
+/// that is `GatewayChannelMode`, a different enum with explicit values,
+/// which is safe to read and carries the bandwidth.
 public enum GatewayOperatingMode: String, Sendable, CaseIterable, Codable {
     case anyAll = "AnyAll"
     case packet = "Packet"
@@ -34,10 +35,20 @@ public struct GatewayPosition: Sendable, Equatable, Codable {
     /// the client's job.
     public let distanceMiles: Int
     public let headingDegrees: Int
-    /// The mode we *asked* for — the only trustworthy mode information.
+    /// The mode we *asked* for.
     public let queriedMode: GatewayOperatingMode
-    /// The service's undocumented `Mode` integer. Diagnostics only.
+    /// The service's `Mode` integer, verbatim.
     public let rawMode: Int
+
+    /// `rawMode` resolved against ARSFI's `ModeMappings`, which has
+    /// explicit numeric values — this is where the bandwidth comes from.
+    /// nil when the service sent a value the enum does not know.
+    public var channelMode: GatewayChannelMode? { GatewayChannelMode(rawValue: rawMode) }
+
+    /// The bandwidth to dial this channel with, band plan applied.
+    public var bandwidthHz: Int? {
+        GatewayBandwidth.hertz(mode: channelMode, frequencyHz: frequencyHz)
+    }
 
     public init(
         callsign: String, gridSquare: String, frequencyHz: Int, baud: String,
@@ -137,11 +148,9 @@ public actor GatewayWebService {
         return positions
     }
 
-    /// Which `Mode` integers each requested mode actually returned.
-    ///
-    /// Purely observational: once the mapping is confirmed over a few
-    /// refreshes, the several per-mode requests could collapse into a
-    /// single `AnyAll` one. Until then we do not guess.
+    /// Which `Mode` integers each requested mode actually returned —
+    /// diagnostics for the CLI, and the evidence trail should the
+    /// service ever start sending values `GatewayChannelMode` lacks.
     public func observedModeCodes() -> [GatewayOperatingMode: Set<Int>] {
         modeCodes
     }

@@ -1,44 +1,64 @@
 {
   "GatewayList": [
     {
+      "Callsign": "HB9AK-1",
+      "Gridsquare": "JN47LI",
+      "Frequency": 28312500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 21,
+      "Heading": 120
+    },
+    {
       "Callsign": "HB9AK",
       "Gridsquare": "JN36PV",
       "Frequency": 7051500,
-      "Mode": 6,
-      "Baud": "2000",
+      "Mode": 43,
+      "Baud": "600",
       "ServiceCode": "PUBLIC",
-      "Distance": 104,
-      "Heading": 246
+      "Distance": 105,
+      "Heading": 92
     },
     {
       "Callsign": "HB9AK",
       "Gridsquare": "JN36PV",
       "Frequency": 10145900,
-      "Mode": 6,
-      "Baud": "500",
+      "Mode": 43,
+      "Baud": "600",
       "ServiceCode": "PUBLIC",
-      "Distance": 104,
-      "Heading": 246
+      "Distance": 105,
+      "Heading": 92
     },
     {
       "Callsign": "HB9MM",
       "Gridsquare": "JN36HN",
       "Frequency": 7053000,
-      "Mode": 6,
-      "Baud": "2000",
+      "Mode": 43,
+      "Baud": "600",
       "ServiceCode": "PUBLIC",
       "Distance": 143,
-      "Heading": 238
+      "Heading": 113
     },
     {
-      "Callsign": "DK0WCY",
-      "Gridsquare": "JO44VQ",
-      "Frequency": 3612000,
-      "Mode": 6,
-      "Baud": "",
+      "Callsign": "HB9MM",
+      "Gridsquare": "JN36HN",
+      "Frequency": 10145300,
+      "Mode": 41,
+      "Baud": "600",
       "ServiceCode": "PUBLIC",
-      "Distance": 401,
-      "Heading": 8
+      "Distance": 143,
+      "Heading": 113
+    },
+    {
+      "Callsign": "IW2OHX",
+      "Gridsquare": "JN45NN",
+      "Frequency": 14110400,
+      "Mode": 43,
+      "Baud": "0",
+      "ServiceCode": "PUBLIC",
+      "Distance": 139,
+      "Heading": 180
     }
   ]
 }

@@ -121,16 +121,36 @@ private actor RequestRecorder {
         let positions = try await service.proximity(
             gridSquare: "JN47PN", modes: [.ardop])
 
-        #expect(positions.count == 4)
-        let first = try #require(positions.first)
-        #expect(first.callsign == "HB9AK")
-        #expect(first.gridSquare == "JN36PV")
-        #expect(first.frequencyHz == 7_051_500)
-        #expect(first.baud == "2000")
-        #expect(first.distanceMiles == 104)
-        #expect(first.headingDegrees == 246)
-        // The mode comes from the request, not from the payload.
+        #expect(positions.count == 6)
+        let hb9ak = try #require(positions.first { $0.frequencyHz == 7_051_500 })
+        #expect(hb9ak.callsign == "HB9AK")
+        #expect(hb9ak.gridSquare == "JN36PV")
+        #expect(hb9ak.distanceMiles == 105)
+        #expect(hb9ak.headingDegrees == 92)
         #expect(positions.allSatisfy { $0.queriedMode == .ardop })
+    }
+
+    /// Live data: `Baud` says "600" for ARDOP 500 and ARDOP 2000 alike,
+    /// so the bandwidth comes from `Mode` and nowhere else.
+    @Test func bandwidthComesFromTheModeNotFromBaud() async throws {
+        let (service, _) = try makeService(fixture: "proximity-ardop")
+
+        let positions = try await service.proximity(
+            gridSquare: "JN47PN", modes: [.ardop])
+
+        let wide = try #require(positions.first { $0.frequencyHz == 7_051_500 })
+        let narrow = try #require(positions.first { $0.frequencyHz == 10_145_300 })
+
+        #expect(wide.baud == narrow.baud)  // both "600"
+        #expect(wide.channelMode == .ardop2000)
+        #expect(wide.bandwidthHz == 2000)
+        #expect(narrow.channelMode == .ardop500)
+        #expect(narrow.bandwidthHz == 500)
+
+        // HB9AK announces ARDOP 2000 on 30 m; the band plan caps it.
+        let thirty = try #require(positions.first { $0.frequencyHz == 10_145_900 })
+        #expect(thirty.channelMode == .ardop2000)
+        #expect(thirty.bandwidthHz == 500)
     }
 
     /// The wire types are not fully pinned down: wl2k-go models the same
@@ -160,16 +180,16 @@ private actor RequestRecorder {
         #expect(positions.isEmpty)
     }
 
-    /// The raw Mode integer is carried through but never interpreted;
-    /// the observed values are collected so the mapping can be
-    /// confirmed later instead of guessed now.
-    @Test func rawModeIsRecordedButNotTrusted() async throws {
+    /// The observed Mode integers are collected for diagnostics — and
+    /// as the evidence trail if the service ever sends a value
+    /// `GatewayChannelMode` does not know.
+    @Test func observedModeIntegersAreRecorded() async throws {
         let (service, _) = try makeService(fixture: "proximity-ardop")
 
         let positions = try await service.proximity(gridSquare: "JN47PN", modes: [.ardop])
 
-        #expect(positions.allSatisfy { $0.rawMode == 6 })
-        #expect(await service.observedModeCodes() == [.ardop: [6]])
+        #expect(positions.allSatisfy { $0.channelMode?.family == .ardop })
+        #expect(await service.observedModeCodes() == [.ardop: [41, 43]])
     }
 
     // MARK: - Errors

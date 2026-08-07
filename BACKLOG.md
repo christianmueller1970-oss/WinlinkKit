@@ -81,13 +81,17 @@ they will likely be tackled. Reference implementations for almost everything:
       `GatewayListing` and `GatewayProximity`, with the explicit condition
       that the endpoints be queried sparingly — hence the rate limit inside
       the actor rather than in the client.
-- [ ] **Confirm the `Mode` integer empirically.** The two published sources
-      for the enum (api.winlink.org metadata and ARSFI's
-      `WinlinkWebServices.dtos.cs`) disagree on where `AnyAll` sits, so the
-      field is carried as `rawMode` and never read. `observedModeCodes()`
-      collects what each requested mode actually returns; once that mapping
-      is confirmed over a few refreshes, the per-mode requests can collapse
-      into a single `AnyAll` one.
+- [x] **The `Mode` integer is resolved.** It is ARSFI's `ModeMappings`
+      enum, which *does* have explicit numeric values (ARDOP200=40 …
+      ARDOP2000=43, VARA500=53, VARA2750=54) — a different enum from the
+      valueless `GatewayOperatingMode` we send in the request. Live data
+      2026-08-07 returned 41 and 43 for ARDOP. `GatewayChannelMode` decodes
+      it and is the only source of a channel's bandwidth: `Baud` is not, it
+      reads "600" for ARDOP 500 and ARDOP 2000 alike.
+- [ ] **Collapse the per-mode requests into one `AnyAll` request.** Now
+      that the response mode is trustworthy, the transport family can be
+      derived from it instead of from what was asked, so all modes could
+      come back in a single call. Would cut the request count further.
 - [ ] **`gateway/status.json`** if that permission is ever granted. It
       reports `SupportedModes` in plain text ("ARDOP 2000"), which would
       settle both the mode integer and the bandwidth in one go, plus

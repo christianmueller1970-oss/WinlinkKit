@@ -388,7 +388,7 @@ struct CLI {
         }
 
         print("")
-        print("Callsign  Grid      Frequency   Baud       Svc     API mi/°   Own km/°")
+        print("Callsign  Grid      Frequency   Baud   Mode  Svc     API mi/°   Own km/°")
         for position in positions.sorted(by: { $0.distanceMiles < $1.distanceMiles }) {
             // Cross-check the service's distance against our own maths;
             // the two must agree, otherwise one of them is wrong.
@@ -403,7 +403,8 @@ struct CLI {
                     + position.gridSquare.padding(toLength: 10, withPad: " ", startingAt: 0)
                     + String(position.frequencyHz).padding(
                         toLength: 12, withPad: " ", startingAt: 0)
-                    + position.baud.padding(toLength: 11, withPad: " ", startingAt: 0)
+                    + position.baud.padding(toLength: 7, withPad: " ", startingAt: 0)
+                    + String(position.rawMode).padding(toLength: 6, withPad: " ", startingAt: 0)
                     + position.serviceCode.padding(toLength: 8, withPad: " ", startingAt: 0)
                     + String(format: "%4d/%03d  ", position.distanceMiles,
                         position.headingDegrees)
