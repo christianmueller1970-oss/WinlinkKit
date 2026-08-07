@@ -1,0 +1,455 @@
+{
+  "GatewayList": [
+    {
+      "Callsign": "HB9AK-1",
+      "Gridsquare": "JN47LI",
+      "Frequency": 28312500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 21,
+      "Heading": 120
+    },
+    {
+      "Callsign": "HB9AK",
+      "Gridsquare": "JN36PV",
+      "Frequency": 3593000,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 105,
+      "Heading": 92
+    },
+    {
+      "Callsign": "HB9AK",
+      "Gridsquare": "JN36PV",
+      "Frequency": 3614500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 105,
+      "Heading": 92
+    },
+    {
+      "Callsign": "HB9AK",
+      "Gridsquare": "JN36PV",
+      "Frequency": 7051500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 105,
+      "Heading": 92
+    },
+    {
+      "Callsign": "HB9AK",
+      "Gridsquare": "JN36PV",
+      "Frequency": 10145900,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 105,
+      "Heading": 92
+    },
+    {
+      "Callsign": "HB9AK",
+      "Gridsquare": "JN36PV",
+      "Frequency": 14110400,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 105,
+      "Heading": 92
+    },
+    {
+      "Callsign": "HB9AK",
+      "Gridsquare": "JN36PV",
+      "Frequency": 14116500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 105,
+      "Heading": 92
+    },
+    {
+      "Callsign": "HB9AK",
+      "Gridsquare": "JN36PV",
+      "Frequency": 18115900,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 105,
+      "Heading": 92
+    },
+    {
+      "Callsign": "HB9AK",
+      "Gridsquare": "JN36PV",
+      "Frequency": 21115000,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 105,
+      "Heading": 92
+    },
+    {
+      "Callsign": "DM6TS",
+      "Gridsquare": "JN49FC",
+      "Frequency": 7063000,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 113,
+      "Heading": -17
+    },
+    {
+      "Callsign": "DM6TS",
+      "Gridsquare": "JN49FC",
+      "Frequency": 10147500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 113,
+      "Heading": -17
+    },
+    {
+      "Callsign": "DM6TS",
+      "Gridsquare": "JN49FC",
+      "Frequency": 14094500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 113,
+      "Heading": -17
+    },
+    {
+      "Callsign": "IR2DS",
+      "Gridsquare": "JN45OT",
+      "Frequency": 3619000,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 121,
+      "Heading": 179
+    },
+    {
+      "Callsign": "IR2DS",
+      "Gridsquare": "JN45OT",
+      "Frequency": 7053000,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 121,
+      "Heading": 179
+    },
+    {
+      "Callsign": "IR2DS",
+      "Gridsquare": "JN45OT",
+      "Frequency": 10133000,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 121,
+      "Heading": 179
+    },
+    {
+      "Callsign": "IW2OHX",
+      "Gridsquare": "JN45NN",
+      "Frequency": 7055500,
+      "Mode": 43,
+      "Baud": "0",
+      "ServiceCode": "PUBLIC",
+      "Distance": 139,
+      "Heading": 180
+    },
+    {
+      "Callsign": "IW2OHX",
+      "Gridsquare": "JN45NN",
+      "Frequency": 14110400,
+      "Mode": 43,
+      "Baud": "0",
+      "ServiceCode": "PUBLIC",
+      "Distance": 139,
+      "Heading": 180
+    },
+    {
+      "Callsign": "IW2OHX",
+      "Gridsquare": "JN45NN",
+      "Frequency": 21115000,
+      "Mode": 43,
+      "Baud": "0",
+      "ServiceCode": "PUBLIC",
+      "Distance": 139,
+      "Heading": 180
+    },
+    {
+      "Callsign": "HB9MM",
+      "Gridsquare": "JN36HN",
+      "Frequency": 3605500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 143,
+      "Heading": 113
+    },
+    {
+      "Callsign": "HB9MM",
+      "Gridsquare": "JN36HN",
+      "Frequency": 7053000,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 143,
+      "Heading": 113
+    },
+    {
+      "Callsign": "HB9MM",
+      "Gridsquare": "JN36HN",
+      "Frequency": 10145300,
+      "Mode": 41,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 143,
+      "Heading": 113
+    },
+    {
+      "Callsign": "HB9MM",
+      "Gridsquare": "JN36HN",
+      "Frequency": 14109200,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 143,
+      "Heading": 113
+    },
+    {
+      "Callsign": "HB9PC",
+      "Gridsquare": "JN36DJ",
+      "Frequency": 3596000,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 163,
+      "Heading": 160
+    },
+    {
+      "Callsign": "HB9PC",
+      "Gridsquare": "JN36DJ",
+      "Frequency": 3604000,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 163,
+      "Heading": 160
+    },
+    {
+      "Callsign": "HB9PC",
+      "Gridsquare": "JN36DJ",
+      "Frequency": 7059500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 163,
+      "Heading": 160
+    },
+    {
+      "Callsign": "IK2MMR",
+      "Gridsquare": "JN55CD",
+      "Frequency": 7046500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 173,
+      "Heading": 157
+    },
+    {
+      "Callsign": "DA5UDI",
+      "Gridsquare": "JO30QJ",
+      "Frequency": 7051800,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 214,
+      "Heading": -106
+    },
+    {
+      "Callsign": "DA5UDI",
+      "Gridsquare": "JO30QJ",
+      "Frequency": 14094900,
+      "Mode": 41,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 214,
+      "Heading": -106
+    },
+    {
+      "Callsign": "DA5UDI",
+      "Gridsquare": "JO30QJ",
+      "Frequency": 14102400,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 214,
+      "Heading": -106
+    },
+    {
+      "Callsign": "DA5UDI",
+      "Gridsquare": "JO30QJ",
+      "Frequency": 14110400,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 214,
+      "Heading": -106
+    },
+    {
+      "Callsign": "OE5XIR",
+      "Gridsquare": "JN78AE",
+      "Frequency": 3605500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 225,
+      "Heading": 32
+    },
+    {
+      "Callsign": "OE5XIR",
+      "Gridsquare": "JN78AE",
+      "Frequency": 7051500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 225,
+      "Heading": 32
+    },
+    {
+      "Callsign": "OE5XIR",
+      "Gridsquare": "JN78AE",
+      "Frequency": 14105500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 225,
+      "Heading": 32
+    },
+    {
+      "Callsign": "OE3XEC",
+      "Gridsquare": "JN78LC",
+      "Frequency": 3608500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 266,
+      "Heading": 30
+    },
+    {
+      "Callsign": "OE3XEC",
+      "Gridsquare": "JN78LC",
+      "Frequency": 3617500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 266,
+      "Heading": 30
+    },
+    {
+      "Callsign": "OE3XEC",
+      "Gridsquare": "JN78LC",
+      "Frequency": 10146500,
+      "Mode": 41,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 266,
+      "Heading": 30
+    },
+    {
+      "Callsign": "S57MK",
+      "Gridsquare": "JN76NE",
+      "Frequency": 3591500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 292,
+      "Heading": 165
+    },
+    {
+      "Callsign": "S57AF",
+      "Gridsquare": "JN76OA",
+      "Frequency": 3592500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 300,
+      "Heading": 171
+    },
+    {
+      "Callsign": "S57AF",
+      "Gridsquare": "JN76OA",
+      "Frequency": 7053500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 300,
+      "Heading": 171
+    },
+    {
+      "Callsign": "S57AF",
+      "Gridsquare": "JN76OA",
+      "Frequency": 10147500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 300,
+      "Heading": 171
+    },
+    {
+      "Callsign": "S57AF",
+      "Gridsquare": "JN76OA",
+      "Frequency": 14108500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 300,
+      "Heading": 171
+    },
+    {
+      "Callsign": "OE6XPR",
+      "Gridsquare": "JN76US",
+      "Frequency": 3598500,
+      "Mode": 43,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 307,
+      "Heading": -170
+    },
+    {
+      "Callsign": "SR3WLK",
+      "Gridsquare": "JO82KL",
+      "Frequency": 3587000,
+      "Mode": 41,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 478,
+      "Heading": -144
+    },
+    {
+      "Callsign": "SR3WLK",
+      "Gridsquare": "JO82KL",
+      "Frequency": 7062000,
+      "Mode": 41,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 478,
+      "Heading": -144
+    },
+    {
+      "Callsign": "SR3WLK",
+      "Gridsquare": "JO82KL",
+      "Frequency": 14112000,
+      "Mode": 41,
+      "Baud": "600",
+      "ServiceCode": "PUBLIC",
+      "Distance": 478,
+      "Heading": -144
+    }
+  ],
+  "ResponseStatus": {}
+}

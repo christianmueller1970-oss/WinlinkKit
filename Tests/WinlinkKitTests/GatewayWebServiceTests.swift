@@ -172,6 +172,57 @@ private actor RequestRecorder {
         #expect(positions[1].baud == "")
     }
 
+    /// The unedited answer api.winlink.org gave for JN47PN / ARDOP /
+    /// 500 miles on 2026-08-07 — 45 channels from 15 stations. A golden
+    /// test against reality rather than against my reading of the docs.
+    @Test func theLiveAnswerDecodesCompletely() async throws {
+        let (service, _) = try makeService(fixture: "proximity-ardop-live")
+
+        let positions = try await service.proximity(
+            gridSquare: "JN47PN", modes: [.ardop], maxDistanceMiles: 500)
+
+        #expect(positions.count == 45)
+        #expect(Set(positions.map(\.callsign)).count == 15)
+        // Several channels per station — that is what makes proximity
+        // usable as the channel source at all.
+        #expect(positions.filter { $0.callsign == "HB9AK" }.count == 8)
+
+        // Every record is complete enough to dial.
+        #expect(positions.allSatisfy { !$0.callsign.isEmpty })
+        #expect(positions.allSatisfy { $0.frequencyHz > 1_000_000 })
+        #expect(positions.allSatisfy { Maidenhead.isValid($0.gridSquare) })
+
+        // Every mode resolves; none falls through to nil.
+        #expect(positions.allSatisfy { $0.channelMode != nil })
+        #expect(positions.allSatisfy { $0.channelMode?.family == .ardop })
+        #expect(Set(positions.compactMap(\.rawMode)) == [41, 43])
+
+        // Baud carries no bandwidth information at all.
+        #expect(Set(positions.map(\.baud)) == ["600", "0"])
+        // …but the mode does, for every single channel.
+        #expect(positions.allSatisfy { $0.bandwidthHz != nil })
+        #expect(Set(positions.compactMap(\.bandwidthHz)) == [500, 2000])
+    }
+
+    /// Our own distance must agree with what the service reports;
+    /// if the two ever drift apart, one of them is wrong.
+    @Test func ourDistanceAgreesWithTheServiceOnLiveData() async throws {
+        let (service, _) = try makeService(fixture: "proximity-ardop-live")
+        let home = try Maidenhead(locator: "JN47PN")
+
+        let positions = try await service.proximity(
+            gridSquare: "JN47PN", modes: [.ardop], maxDistanceMiles: 500)
+
+        for position in positions {
+            let there = try Maidenhead(locator: position.gridSquare)
+            let ours = home.distanceKm(to: there)
+            let theirs = Double(position.distanceMiles) * 1.609_344
+            // Grid-square centres versus their exact coordinates, plus
+            // their rounding to whole miles: a few percent is expected.
+            #expect(abs(ours - theirs) < max(12, theirs * 0.06))
+        }
+    }
+
     @Test func emptyListIsNotAnError() async throws {
         let (service, _) = try makeService(fixture: "proximity-empty")
 
