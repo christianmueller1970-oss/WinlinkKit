@@ -45,8 +45,10 @@ they will likely be tackled. Reference implementations for almost everything:
       `powerWatts()`. Lets a client tune the drive level against the
       rig's ALC without needing a CAT module of its own; an app that
       already talks to the radio some other way does not need this.
-      CI-V meters (0x15) are still open — a rig on the CI-V PTT path
-      therefore has no automatic measurement.
+      ALC over CI-V followed in 0.5.1, so the CI-V PTT path can be
+      measured too. Icom's power meter stays open: its scale is
+      markedly non-linear and per-model, and setting a drive level does
+      not need watts — the ALC is the criterion.
 - [x] **ARDOP drive level and two-tone test** (0.4.0) — `setDriveLevel`,
       `driveLevel`, `setTwoToneTest`. The TNC defaults to full amplitude,
       which overdrives a data-mode input; the host app needs to set this.

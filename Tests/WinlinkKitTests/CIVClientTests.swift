@@ -136,4 +136,41 @@ private actor FakeIcomRig {
             try await get.value
         }
     }
+
+    // MARK: - ALC
+
+    /// Zwei-Byte-BCD: 0x01 0x20 sind 120 und damit voller Ausschlag.
+    @Test(arguments: [
+        (UInt8(0x00), UInt8(0x00), 0.0),
+        (UInt8(0x00), UInt8(0x12), 0.1),
+        (UInt8(0x00), UInt8(0x60), 0.5),
+        (UInt8(0x01), UInt8(0x20), 1.0),
+    ])
+    func alcScalesTheMeterReading(high: UInt8, low: UInt8, expected: Double) async throws {
+        let (client, rig) = await makePair()
+
+        async let call = client.alc()
+        #expect(try await rig.readFrame() == [0xFE, 0xFE, 0x98, 0xE0, 0x15, 0x13, 0xFD])
+        await rig.reply([0x15, 0x13, high, low])
+        let value = try await call
+        #expect(abs(value - expected) < 0.005)
+    }
+
+    /// Ueber Vollausschlag hinaus wird begrenzt statt geglaubt — die
+    /// Skala ist geraetespezifisch, und fuer die Frage «regelt die ALC
+    /// ueberhaupt» reicht 0…1.
+    @Test func alcClampsAboveFullScale() async throws {
+        let (client, rig) = await makePair()
+
+        async let call = client.alc()
+        _ = try await rig.readFrame()
+        await rig.reply([0x15, 0x13, 0x02, 0x55])
+        #expect(try await call == 1.0)
+    }
+
+    @Test func meterValueDecodesBCD() {
+        #expect(CIVClient.meterValue(0x00, 0x00) == 0)
+        #expect(CIVClient.meterValue(0x01, 0x20) == 120)
+        #expect(CIVClient.meterValue(0x02, 0x55) == 255)
+    }
 }

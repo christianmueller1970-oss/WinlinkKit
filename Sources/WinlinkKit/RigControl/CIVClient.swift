@@ -102,6 +102,39 @@ public actor CIVClient {
             [0x26, 0x00, mode.mode, mode.dataMode, mode.filter], expecting: nil)
     }
 
+    // MARK: - Messwerte
+
+    /// Reads the ALC meter, normalised 0…1 (cmd 15 13).
+    ///
+    /// Only meaningful while transmitting. Icom reports meters as a
+    /// two-byte BCD value; for ALC the scale runs 0000 = 0 % to
+    /// 0120 = 100 %, so anything above 120 is clamped rather than
+    /// trusted — the reading matters as "does the control loop act at
+    /// all", not as a precise percentage.
+    ///
+    /// Why only ALC and not the power meter: the Po scale is markedly
+    /// non-linear and differs per model (0000/0141/0215 map to
+    /// 0/50/100 % on some rigs), so watts would need a per-model curve.
+    /// Setting a drive level does not need them — the ALC is the
+    /// criterion.
+    public func alc() async throws -> Double {
+        let reply = try await command([0x15, 0x13], expecting: 0x15)
+        // FE FE <to> <from> 15 13 <hi> <lo> FD → payload after cmd/sub.
+        guard reply.count >= 4 else {
+            throw WinlinkError.malformedInput("Short CI-V ALC reply (\(reply.count) bytes)")
+        }
+        let raw = Self.meterValue(reply[2], reply[3])
+        return min(1, Double(raw) / 120)
+    }
+
+    /// Two-byte BCD meter reading → 0…255.
+    static func meterValue(_ high: UInt8, _ low: UInt8) -> Int {
+        let hundreds = Int(high & 0x0F)
+        let tens = Int(low >> 4)
+        let ones = Int(low & 0x0F)
+        return hundreds * 100 + tens * 10 + ones
+    }
+
     public func close() async {
         guard !closed else { return }
         closed = true
