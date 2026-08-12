@@ -257,13 +257,21 @@ public actor ArdopModem {
         return value
     }
 
-    /// Starts or stops the two-tone test signal.
+    /// Sends the two-tone test signal.
     ///
-    /// **This keys the transmitter.** ardopcf sends two tones for five
-    /// seconds, the standard signal for setting drive level against the
-    /// rig's ALC. Only ever on a clear frequency or into a dummy load.
-    public func setTwoToneTest(_ on: Bool) async throws {
-        _ = try await set("TWOTONETEST", on ? "true" : "false")
+    /// **This keys the transmitter** for five seconds — the standard
+    /// signal for setting drive level against the rig's ALC. Only ever
+    /// on a clear frequency or into a dummy load.
+    ///
+    /// One-shot, not a switch: ardopcf ends the burst by itself, there
+    /// is no stop command. A caller that wants a longer test repeats it.
+    /// Note that the TNC keys via its own PTT path only when it was
+    /// configured for one; with host-side PTT the caller must have a
+    /// PTT handler installed, or audio goes out with the rig in receive.
+    public static let twoToneDuration: Duration = .seconds(5)
+
+    public func sendTwoToneTest() async throws {
+        _ = try await set("TWOTONETEST")
     }
 
     /// Closes the ARQ link (if any) and the channels to the TNC

@@ -493,18 +493,15 @@ private struct TNCHarness {
         #expect(try await call == 80)
     }
 
-    @Test func twoToneTestKeysAndUnkeys() async throws {
+    /// Einmal-Befehl ohne Parameter: ardopcf sendet fuenf Sekunden und
+    /// hoert von selbst auf, ein Stop-Kommando gibt es nicht.
+    @Test func twoToneTestIsAOneShotCommand() async throws {
         let tnc = await TNCHarness.start()
         try await tnc.performSetup()
 
-        async let on: Void = tnc.modem.setTwoToneTest(true)
-        try await tnc.commandServer.expect("TWOTONETEST true")
+        async let call: Void = tnc.modem.sendTwoToneTest()
+        try await tnc.commandServer.expect("TWOTONETEST")
         await tnc.commandServer.send("TWOTONETEST now True\r")
-        try await on
-
-        async let off: Void = tnc.modem.setTwoToneTest(false)
-        try await tnc.commandServer.expect("TWOTONETEST false")
-        await tnc.commandServer.send("TWOTONETEST now False\r")
-        try await off
+        try await call
     }
 }
