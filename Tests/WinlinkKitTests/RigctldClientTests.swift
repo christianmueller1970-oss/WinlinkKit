@@ -114,4 +114,67 @@ private actor FakeRigctld {
         await rigctld.transport.write(Data("7050000\r\n".utf8))
         #expect(try await get == 7_050_000)
     }
+
+    // MARK: - Mode
+
+    @Test func setModeSendsNameAndPassband() async throws {
+        let (client, rigctld) = await makePair()
+
+        async let call: Void = client.setMode(.dataUSB)
+        #expect(try await rigctld.readCommand() == "\\set_mode PKTUSB 0")
+        await rigctld.reply("RPRT 0")
+        try await call
+    }
+
+    @Test func setModeThrowsOnNonZeroRPRT() async throws {
+        let (client, rigctld) = await makePair()
+
+        let call = Task { try await client.setMode(.usb) }
+        _ = try await rigctld.readCommand()
+        await rigctld.reply("RPRT -9")
+        await #expect(throws: WinlinkError.self) { try await call.value }
+    }
+
+    /// `\get_mode` answers with two lines where everything else answers
+    /// with one. Both have to be consumed.
+    @Test func modeReadsBothReplyLines() async throws {
+        let (client, rigctld) = await makePair()
+
+        async let call = client.mode()
+        #expect(try await rigctld.readCommand() == "\\get_mode")
+        await rigctld.reply("PKTUSB")
+        await rigctld.reply("3000")
+        let mode = try await call
+        #expect(mode.name == "PKTUSB")
+        #expect(mode.passbandHz == 3000)
+    }
+
+    /// The regression this pair of lines invites: if the passband line
+    /// stayed in the queue, the *next* command would read it as its own
+    /// reply and every answer after that would be off by one.
+    @Test func modeDoesNotDesynchroniseTheNextCommand() async throws {
+        let (client, rigctld) = await makePair()
+
+        async let first = client.mode()
+        _ = try await rigctld.readCommand()
+        await rigctld.reply("USB")
+        await rigctld.reply("2400")
+        _ = try await first
+
+        async let second = client.frequency()
+        #expect(try await rigctld.readCommand() == "\\get_freq")
+        await rigctld.reply("14109200")
+        #expect(try await second == 14_109_200)
+    }
+
+    /// A failed `\get_mode` sends RPRT and no passband line — waiting
+    /// for a second line would hang until the timeout.
+    @Test func modeThrowsOnRPRTWithoutHangingOnASecondLine() async throws {
+        let (client, rigctld) = await makePair()
+
+        let call = Task { try await client.mode() }
+        _ = try await rigctld.readCommand()
+        await rigctld.reply("RPRT -11")
+        await #expect(throws: WinlinkError.self) { try await call.value }
+    }
 }

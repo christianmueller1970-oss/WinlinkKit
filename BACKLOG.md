@@ -41,8 +41,11 @@ they will likely be tackled. Reference implementations for almost everything:
       ardopcf → HB9AK via 80 m, CI-V QSY + restore, CAT PTT, full B2F
       exchange, ARQ quality 99, 0 failed decodes.
 - [ ] **AX.25 via AGWPE/Direwolf** — `wl2k-go/transport/ax25/agwpe`.
-- [x] **rigctld PTT/frequency control** (Hamlib network protocol) —
+- [x] **rigctld PTT/frequency/mode control** (Hamlib network protocol) —
       `RigctldClient`, wired to ARDOP PTT in the CLI via WL_RIGCTLD_HOST.
+      Mode added in 0.3.1 so a QSY works over a *shared* rigctld while
+      another program holds the serial port — without it the rig lands
+      on the right frequency but stays in SSB.
 - [x] **CI-V frequency/mode control** (Icom CAT on the rig's serial
       port) — `CIVClient` over the new `SerialTransport`; reads/sets
       dial frequency and mode incl. data mode (cmd 26 00). Powers

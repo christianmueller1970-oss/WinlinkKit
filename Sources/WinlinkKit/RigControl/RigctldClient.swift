@@ -3,16 +3,47 @@ import Foundation
 
 /// Client for Hamlib's `rigctld` network daemon (default TCP port 4532).
 ///
-/// Deliberately minimal: PTT and dial frequency of the current VFO —
-/// exactly what a radio transport needs. Hook `setPTT` into
+/// Deliberately minimal: PTT, dial frequency and operating mode of the
+/// current VFO — exactly what a radio transport needs to QSY onto a
+/// gateway channel and key the rig. Hook `setPTT` into
 /// `VaraModem.setPTTHandler` to key the transceiver from the modem's
-/// PTT events. Anything beyond that (mode, split, levels) belongs to
-/// the host application, not this protocol library.
+/// PTT events. Anything beyond that (split, levels, memories) belongs
+/// to the host application, not this protocol library.
+///
+/// Mode is here for symmetry with `CIVClient.setOperatingMode`: a QSY
+/// that sets the frequency but leaves the rig in SSB is worse than no
+/// QSY at all, and via a shared rigctld this is the only way to reach
+/// the radio while another program holds the serial port.
 ///
 /// The rigctld protocol is line-based ASCII: one command per line,
 /// one reply line per command; errors are reported as `RPRT <code>`
 /// (0 = success).
 public actor RigctldClient {
+    /// An operating mode as Hamlib names it: `USB`, `PKTUSB`, `CW` …
+    ///
+    /// A plain string on purpose — Hamlib's list is long, rig-specific
+    /// and grows; an enum here would be a moving target. The host app
+    /// knows which names its rig accepts.
+    public struct Mode: Sendable, Equatable, CustomStringConvertible {
+        public let name: String
+        /// Filter width in Hz; 0 = leave it to the rig.
+        public let passbandHz: Int
+
+        public init(name: String, passbandHz: Int = 0) {
+            self.name = name
+            self.passbandHz = passbandHz
+        }
+
+        /// Upper sideband data mode — what an RMS gateway channel needs.
+        public static let dataUSB = Mode(name: "PKTUSB")
+        public static let usb = Mode(name: "USB")
+        public static let lsb = Mode(name: "LSB")
+
+        public var description: String {
+            passbandHz > 0 ? "\(name)/\(passbandHz)" : name
+        }
+    }
+
     public static let defaultPort: UInt16 = 4532
 
     /// Timeout for one command/response round trip
@@ -76,6 +107,30 @@ public actor RigctldClient {
     /// Sets the dial frequency in Hz (Go: tcpVFO.SetFreq).
     public func setFrequency(_ hz: Int) async throws {
         _ = try await command("\\set_freq \(hz)")
+    }
+
+    /// Reads the operating mode of the current VFO.
+    ///
+    /// `\get_mode` answers with **two** lines — mode and passband —
+    /// where every other command answers with one. Both are consumed
+    /// here; leaving the second in the queue would desynchronise the
+    /// next command's reply.
+    public func mode() async throws -> Mode {
+        let name = try await command("\\get_mode")
+        // A failed command reports RPRT and sends no passband line.
+        if name.hasPrefix("RPRT ") {
+            throw WinlinkError.remoteError("rigctld: get_mode failed (\(name))")
+        }
+        let passband = try await readLine()
+        return Mode(name: name, passbandHz: Int(passband) ?? 0)
+    }
+
+    /// Sets the operating mode of the current VFO.
+    ///
+    /// `passbandHz` 0 leaves the filter to the rig's default, which is
+    /// what a data-mode QSY wants.
+    public func setMode(_ mode: Mode) async throws {
+        _ = try await command("\\set_mode \(mode.name) \(mode.passbandHz)")
     }
 
     public func close() async {
