@@ -133,6 +133,39 @@ public actor RigctldClient {
         _ = try await command("\\set_mode \(mode.name) \(mode.passbandHz)")
     }
 
+    // MARK: - Messwerte
+
+    /// Reads a Hamlib level by name, e.g. `ALC`, `SWR`,
+    /// `RFPOWER_METER_WATTS`.
+    ///
+    /// Not every backend implements every level, and a rig that does not
+    /// know one answers with `RPRT -11` — the caller should treat a throw
+    /// as "this rig does not report it" rather than as a failure.
+    public func level(_ name: String) async throws -> Double {
+        let reply = try await command("\\get_level \(name)")
+        guard let value = Double(reply) else {
+            throw WinlinkError.malformedInput("Unexpected \(name) reply: \(reply)")
+        }
+        return value
+    }
+
+    /// ALC reading, normalised 0…1 — only meaningful while transmitting.
+    ///
+    /// This is the value a drive level is set against: it should just
+    /// barely leave zero. Anything more means the control loop is
+    /// limiting, and what it limits, it also distorts.
+    public func alc() async throws -> Double {
+        min(1, max(0, try await level("ALC")))
+    }
+
+    /// Measured output power in watts — only meaningful while
+    /// transmitting. Unlike a catalogue value this is what the rig
+    /// actually reports, which shows whether more drive still buys
+    /// any power.
+    public func powerWatts() async throws -> Double {
+        max(0, try await level("RFPOWER_METER_WATTS"))
+    }
+
     public func close() async {
         guard !closed else { return }
         closed = true

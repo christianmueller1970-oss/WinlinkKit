@@ -177,4 +177,50 @@ private actor FakeRigctld {
         await rigctld.reply("RPRT -11")
         await #expect(throws: WinlinkError.self) { try await call.value }
     }
+
+    // MARK: - Messwerte
+
+    @Test func levelReadsByName() async throws {
+        let (client, rigctld) = await makePair()
+
+        async let call = client.level("SWR")
+        #expect(try await rigctld.readCommand() == "\\get_level SWR")
+        await rigctld.reply("1.400000")
+        #expect(try await call == 1.4)
+    }
+
+    @Test func alcClampsToZeroAndOne() async throws {
+        let (client, rigctld) = await makePair()
+
+        async let low = client.alc()
+        _ = try await rigctld.readCommand()
+        await rigctld.reply("-0.010000")
+        #expect(try await low == 0)
+
+        async let high = client.alc()
+        _ = try await rigctld.readCommand()
+        await rigctld.reply("1.500000")
+        #expect(try await high == 1)
+    }
+
+    @Test func powerWattsReadsTheMeter() async throws {
+        let (client, rigctld) = await makePair()
+
+        async let call = client.powerWatts()
+        #expect(try await rigctld.readCommand() == "\\get_level RFPOWER_METER_WATTS")
+        await rigctld.reply("10.200000")
+        #expect(try await call == 10.2)
+    }
+
+    /// Ein Geraet, das den Level nicht kennt, antwortet mit RPRT -11.
+    /// Der Aufrufer soll das als «meldet es nicht» behandeln, nicht als
+    /// Fehlschlag der Verbindung — deshalb muss es sauber werfen.
+    @Test func unknownLevelThrows() async throws {
+        let (client, rigctld) = await makePair()
+
+        let call = Task { try await client.alc() }
+        _ = try await rigctld.readCommand()
+        await rigctld.reply("RPRT -11")
+        await #expect(throws: WinlinkError.self) { try await call.value }
+    }
 }

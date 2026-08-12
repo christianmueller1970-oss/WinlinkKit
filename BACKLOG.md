@@ -41,6 +41,12 @@ they will likely be tackled. Reference implementations for almost everything:
       ardopcf → HB9AK via 80 m, CI-V QSY + restore, CAT PTT, full B2F
       exchange, ARQ quality 99, 0 failed decodes.
 - [ ] **AX.25 via AGWPE/Direwolf** — `wl2k-go/transport/ax25/agwpe`.
+- [x] **Level readings over rigctld** (0.5.0) — `level(_:)`, `alc()`,
+      `powerWatts()`. Lets a client tune the drive level against the
+      rig's ALC without needing a CAT module of its own; an app that
+      already talks to the radio some other way does not need this.
+      CI-V meters (0x15) are still open — a rig on the CI-V PTT path
+      therefore has no automatic measurement.
 - [x] **ARDOP drive level and two-tone test** (0.4.0) — `setDriveLevel`,
       `driveLevel`, `setTwoToneTest`. The TNC defaults to full amplitude,
       which overdrives a data-mode input; the host app needs to set this.
