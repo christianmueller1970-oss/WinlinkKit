@@ -232,6 +232,40 @@ public actor ArdopModem {
         return version
     }
 
+    /// Sets the transmit drive level, 0…100.
+    ///
+    /// Scales the amplitude of the audio ardopcf sends to the rig. The
+    /// TNC's own default is 100 — full amplitude, which on a data mode
+    /// input (USB-D and friends) usually overdrives the modulator: the
+    /// audio goes straight to it, without the microphone chain that
+    /// would otherwise limit it. Overdriving costs decodes, so this is
+    /// worth setting rather than leaving alone.
+    ///
+    /// The rig-side level (Icom: `USB MOD Level`) is not reachable over
+    /// CAT on most radios — this is the half that software can set.
+    public func setDriveLevel(_ level: Int) async throws {
+        let clamped = max(0, min(100, level))
+        _ = try await set("DRIVELEVEL", String(clamped))
+    }
+
+    /// Reads the transmit drive level, 0…100.
+    public func driveLevel() async throws -> Int {
+        let reply = try await get("DRIVELEVEL")
+        guard let value = reply.intValue else {
+            throw WinlinkError.malformedInput("DRIVELEVEL reply without value")
+        }
+        return value
+    }
+
+    /// Starts or stops the two-tone test signal.
+    ///
+    /// **This keys the transmitter.** ardopcf sends two tones for five
+    /// seconds, the standard signal for setting drive level against the
+    /// rig's ALC. Only ever on a clear frequency or into a dummy load.
+    public func setTwoToneTest(_ on: Bool) async throws {
+        _ = try await set("TWOTONETEST", on ? "true" : "false")
+    }
+
     /// Closes the ARQ link (if any) and the channels to the TNC
     /// (Go: TNC.Close).
     public func close() async {

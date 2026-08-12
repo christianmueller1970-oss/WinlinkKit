@@ -41,6 +41,10 @@ they will likely be tackled. Reference implementations for almost everything:
       ardopcf → HB9AK via 80 m, CI-V QSY + restore, CAT PTT, full B2F
       exchange, ARQ quality 99, 0 failed decodes.
 - [ ] **AX.25 via AGWPE/Direwolf** — `wl2k-go/transport/ax25/agwpe`.
+- [x] **ARDOP drive level and two-tone test** (0.4.0) — `setDriveLevel`,
+      `driveLevel`, `setTwoToneTest`. The TNC defaults to full amplitude,
+      which overdrives a data-mode input; the host app needs to set this.
+      Two-tone is the signal for adjusting it against the rig's ALC.
 - [x] **rigctld PTT/frequency/mode control** (Hamlib network protocol) —
       `RigctldClient`, wired to ARDOP PTT in the CLI via WL_RIGCTLD_HOST.
       Mode added in 0.3.1 so a QSY works over a *shared* rigctld while

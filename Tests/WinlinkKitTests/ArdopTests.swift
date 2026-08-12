@@ -457,4 +457,54 @@ private struct TNCHarness {
         #expect(stats == TrafficStats())
         await harness.modem.close()
     }
+
+    // MARK: - Drive level and two-tone test
+
+    @Test func setDriveLevelSendsTheClampedValue() async throws {
+        let tnc = await TNCHarness.start()
+        try await tnc.performSetup()
+
+        async let call: Void = tnc.modem.setDriveLevel(65)
+        try await tnc.commandServer.expect("DRIVELEVEL 65")
+        await tnc.commandServer.send("DRIVELEVEL now 65\r")
+        try await call
+    }
+
+    /// The TNC takes 0…100; anything else would be a fault reply, so it
+    /// never leaves here.
+    @Test(arguments: [(-20, "DRIVELEVEL 0"), (140, "DRIVELEVEL 100")])
+    func setDriveLevelClamps(input: Int, expected: String) async throws {
+        let tnc = await TNCHarness.start()
+        try await tnc.performSetup()
+
+        async let call: Void = tnc.modem.setDriveLevel(input)
+        try await tnc.commandServer.expect(expected)
+        await tnc.commandServer.send("\(expected.replacingOccurrences(of: " ", with: " now "))\r")
+        try await call
+    }
+
+    @Test func driveLevelReadsTheValue() async throws {
+        let tnc = await TNCHarness.start()
+        try await tnc.performSetup()
+
+        async let call = tnc.modem.driveLevel()
+        try await tnc.commandServer.expect("DRIVELEVEL")
+        await tnc.commandServer.send("DRIVELEVEL 80\r")
+        #expect(try await call == 80)
+    }
+
+    @Test func twoToneTestKeysAndUnkeys() async throws {
+        let tnc = await TNCHarness.start()
+        try await tnc.performSetup()
+
+        async let on: Void = tnc.modem.setTwoToneTest(true)
+        try await tnc.commandServer.expect("TWOTONETEST true")
+        await tnc.commandServer.send("TWOTONETEST now True\r")
+        try await on
+
+        async let off: Void = tnc.modem.setTwoToneTest(false)
+        try await tnc.commandServer.expect("TWOTONETEST false")
+        await tnc.commandServer.send("TWOTONETEST now False\r")
+        try await off
+    }
 }
