@@ -43,3 +43,117 @@ public enum CatalogRequest {
             body: "send \(spec)")
     }
 }
+
+extension CatalogRequest {
+
+    /// Eine Saildocs-GRIB-Anfrage aus Einzelteilen, damit eine Oberfläche
+    /// Gebiet, Auflösung, Zeitpunkte und Parameter abfragen kann, ohne
+    /// die Spezifikation `GFS:50N,42N,5W,20E|0.5,0.5|0,24,48|PRMSL,WIND`
+    /// von Hand zu tippen. Gebiet in Dezimalgrad, Nord/Ost positiv.
+    public struct GRIBSpec: Equatable, Sendable {
+        /// Wettermodelle, die Saildocs als GRIB liefert.
+        public enum Model: String, CaseIterable, Sendable {
+            case gfs = "GFS"
+            case ecmwf = "ECMWF"
+            case icon = "ICON"
+            case coamps = "COAMPS"
+            case nam = "NAM"
+            case ww3 = "WW3"
+        }
+
+        public var model: Model
+        public var north: Double
+        public var south: Double
+        public var west: Double
+        public var east: Double
+        /// Gitterabstand in Grad, für Breite und Länge gleich.
+        public var resolution: Double
+        /// Vorhersage-Stunden ab Modelllauf, z. B. `[0, 24, 48, 72]`.
+        public var hours: [Int]
+        /// Saildocs-Parameternamen, z. B. `PRMSL`, `WIND`, `GUST`, `RAIN`.
+        public var parameters: [String]
+
+        public static let commonParameters = ["PRMSL", "WIND", "GUST", "RAIN", "TMP", "WAVES"]
+        public static let resolutions: [Double] = [0.25, 0.5, 1, 2]
+
+        public init(
+            model: Model = .gfs, north: Double, south: Double, west: Double, east: Double,
+            resolution: Double = 0.5, hours: [Int] = [0, 24, 48, 72],
+            parameters: [String] = ["PRMSL", "WIND"]
+        ) {
+            self.model = model
+            self.north = north
+            self.south = south
+            self.west = west
+            self.east = east
+            self.resolution = resolution
+            self.hours = hours
+            self.parameters = parameters
+        }
+
+        /// Ein Rechteck um einen Punkt: `spanDegrees` nach jeder Seite,
+        /// an den Polen und der Datumsgrenze beschnitten.
+        public static func around(
+            latitude: Double, longitude: Double, spanDegrees: Double = 4, model: Model = .gfs
+        ) -> GRIBSpec {
+            GRIBSpec(
+                model: model,
+                north: min(90, latitude + spanDegrees), south: max(-90, latitude - spanDegrees),
+                west: max(-180, longitude - spanDegrees), east: min(180, longitude + spanDegrees))
+        }
+
+        /// Prüft die Teile; Fehler nennen das Feld (`WinlinkError.validation`).
+        public func validate() throws {
+            guard north > south, (-90...90).contains(north), (-90...90).contains(south) else {
+                throw WinlinkError.validation(field: "area", reason: "north must be above south")
+            }
+            guard east > west, (-180...180).contains(west), (-180...180).contains(east) else {
+                throw WinlinkError.validation(field: "area", reason: "east must be right of west")
+            }
+            guard resolution > 0 else {
+                throw WinlinkError.validation(field: "resolution", reason: "must be positive")
+            }
+            guard !hours.isEmpty, hours.allSatisfy({ $0 >= 0 }) else {
+                throw WinlinkError.validation(field: "hours", reason: "at least one forecast hour")
+            }
+            guard !parameters.isEmpty, parameters.allSatisfy({ !$0.isEmpty }) else {
+                throw WinlinkError.validation(field: "parameters", reason: "at least one parameter")
+            }
+        }
+
+        /// Die Saildocs-Spezifikation, z. B.
+        /// `GFS:51.5N,43.5N,5.3E,13.3E|0.5,0.5|0,24,48,72|PRMSL,WIND`.
+        public var spec: String {
+            let area = [
+                Self.degrees(north, positive: "N", negative: "S"),
+                Self.degrees(south, positive: "N", negative: "S"),
+                Self.degrees(west, positive: "E", negative: "W"),
+                Self.degrees(east, positive: "E", negative: "W"),
+            ].joined(separator: ",")
+            let grid = "\(Self.number(resolution)),\(Self.number(resolution))"
+            let times = hours.sorted().map(String.init).joined(separator: ",")
+            let params = parameters.map { $0.uppercased() }.joined(separator: ",")
+            return "\(model.rawValue):\(area)|\(grid)|\(times)|\(params)"
+        }
+
+        /// `50N`, `47.5N`, `5W`; genau null wird Nord bzw. Ost.
+        static func degrees(_ value: Double, positive: String, negative: String) -> String {
+            number(abs(value)) + (value < 0 ? negative : positive)
+        }
+
+        /// Ganze Zahlen ohne Nachkommastellen, sonst bis zu zwei.
+        static func number(_ value: Double) -> String {
+            if value == value.rounded() {
+                return String(Int(value))
+            }
+            var text = String(format: "%.2f", value)
+            while text.hasSuffix("0") { text.removeLast() }
+            return text
+        }
+    }
+
+    /// Saildocs-GRIB-Anfrage aus einer `GRIBSpec`.
+    public static func saildocsGRIB(_ spec: GRIBSpec) -> MessageDraft {
+        saildocsGRIB(spec.spec)
+    }
+}

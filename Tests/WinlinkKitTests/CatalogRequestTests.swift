@@ -27,3 +27,42 @@ struct CatalogRequestTests {
         #expect(draft.body == "send GFS:50N,42N,5W,20E|0.5,0.5|0,24|PRMSL,WIND")
     }
 }
+
+struct GRIBSpecTests {
+
+    @Test func specFormatsAreaGridTimesAndParameters() throws {
+        let spec = CatalogRequest.GRIBSpec(
+            north: 50, south: 42, west: -5, east: 20,
+            resolution: 0.5, hours: [48, 0, 24], parameters: ["prmsl", "WIND"])
+        try spec.validate()
+        #expect(spec.spec == "GFS:50N,42N,5W,20E|0.5,0.5|0,24,48|PRMSL,WIND")
+        #expect(CatalogRequest.saildocsGRIB(spec).body == "send " + spec.spec)
+    }
+
+    @Test func aroundBuildsBoxWithDecimals() {
+        let spec = CatalogRequest.GRIBSpec.around(latitude: 47.5625, longitude: 9.2917, spanDegrees: 4)
+        #expect(spec.spec.hasPrefix("GFS:51.56N,43.56N,5.29E,13.29E|"))
+        let polar = CatalogRequest.GRIBSpec.around(latitude: 88, longitude: 178, spanDegrees: 4)
+        #expect(polar.north == 90)
+        #expect(polar.east == 180)
+    }
+
+    @Test func southernAndWesternHemispheres() {
+        let spec = CatalogRequest.GRIBSpec(
+            north: -30, south: -40, west: -75, east: -60, resolution: 1,
+            hours: [0], parameters: ["WIND"])
+        #expect(spec.spec == "GFS:30S,40S,75W,60W|1,1|0|WIND")
+    }
+
+    @Test func validationRejectsBadInput() {
+        func check(_ spec: CatalogRequest.GRIBSpec) -> Bool {
+            (try? spec.validate()) == nil
+        }
+        #expect(check(CatalogRequest.GRIBSpec(north: 42, south: 50, west: 5, east: 20)))
+        #expect(check(CatalogRequest.GRIBSpec(north: 50, south: 42, west: 20, east: 5)))
+        #expect(check(CatalogRequest.GRIBSpec(north: 50, south: 42, west: 5, east: 20, resolution: 0)))
+        #expect(check(CatalogRequest.GRIBSpec(north: 50, south: 42, west: 5, east: 20, hours: [])))
+        #expect(check(CatalogRequest.GRIBSpec(north: 50, south: 42, west: 5, east: 20, parameters: [""])))
+        #expect(!check(CatalogRequest.GRIBSpec(north: 50, south: 42, west: 5, east: 20)))
+    }
+}
