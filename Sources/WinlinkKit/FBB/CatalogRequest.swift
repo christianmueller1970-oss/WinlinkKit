@@ -110,8 +110,13 @@ extension CatalogRequest {
             guard east > west, (-180...180).contains(west), (-180...180).contains(east) else {
                 throw WinlinkError.validation(field: "area", reason: "east must be right of west")
             }
-            guard resolution > 0 else {
-                throw WinlinkError.validation(field: "resolution", reason: "must be positive")
+            guard resolution.isFinite, resolution > 0, resolution <= 10 else {
+                throw WinlinkError.validation(
+                    field: "resolution", reason: "must be between 0 and 10 degrees")
+            }
+            for (field, value) in [("north", north), ("south", south), ("west", west), ("east", east)]
+            where !value.isFinite {
+                throw WinlinkError.validation(field: field, reason: "must be a finite number")
             }
             guard !hours.isEmpty, hours.allSatisfy({ $0 >= 0 }) else {
                 throw WinlinkError.validation(field: "hours", reason: "at least one forecast hour")
@@ -141,13 +146,15 @@ extension CatalogRequest {
             number(abs(value)) + (value < 0 ? negative : positive)
         }
 
-        /// Ganze Zahlen ohne Nachkommastellen, sonst bis zu zwei.
+        /// Ganze Zahlen ohne Nachkommastellen, sonst bis zu zwei. Nie
+        /// ein Trap: was nicht in ein Int passt, bleibt Gleitkomma-Text.
         static func number(_ value: Double) -> String {
-            if value == value.rounded() {
-                return String(Int(value))
+            if let whole = Int(exactly: value) {
+                return String(whole)
             }
             var text = String(format: "%.2f", value)
             while text.hasSuffix("0") { text.removeLast() }
+            if text.hasSuffix(".") { text.removeLast() }
             return text
         }
     }

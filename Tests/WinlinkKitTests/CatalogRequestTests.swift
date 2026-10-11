@@ -64,5 +64,12 @@ struct GRIBSpecTests {
         #expect(check(CatalogRequest.GRIBSpec(north: 50, south: 42, west: 5, east: 20, hours: [])))
         #expect(check(CatalogRequest.GRIBSpec(north: 50, south: 42, west: 5, east: 20, parameters: [""])))
         #expect(!check(CatalogRequest.GRIBSpec(north: 50, south: 42, west: 5, east: 20)))
+        // Unendlich oder absurd gross darf weder durch die Prüfung noch
+        // beim Formatieren den Prozess beenden.
+        #expect(check(CatalogRequest.GRIBSpec(north: 50, south: 42, west: 5, east: 20, resolution: .infinity)))
+        #expect(check(CatalogRequest.GRIBSpec(north: 50, south: 42, west: 5, east: 20, resolution: 1e20)))
+        #expect(check(CatalogRequest.GRIBSpec(north: .nan, south: 42, west: 5, east: 20)))
+        #expect(CatalogRequest.GRIBSpec.number(1e20) == "100000000000000000000")
+        #expect(CatalogRequest.GRIBSpec.number(.infinity) == "inf")
     }
 }
