@@ -12,6 +12,11 @@ struct CLI {
               Queue a message in the mailbox, then exchange with the CMS.
           winlinkkit-cli fetch [connection]
               Exchange with the CMS (sends queued, fetches pending messages).
+          winlinkkit-cli listen --transport ardop|vara|varafm
+              Wait for another station to connect (P2P), then exchange
+              as master: offers queued messages addressed only to the
+              caller, accepts what it sends. One connection, then exit.
+              WL_PASSWORD is not needed.
           winlinkkit-cli vara-check [--transport vara|varafm]
               Connect to the VARA modem program, print its version and
               disconnect. No RF transmission — safe wiring test.
@@ -33,6 +38,8 @@ struct CLI {
         Connection options:
           --transport <name>    telnet (default), vara (HF), varafm or ardop
           --gateway <callsign>  RMS gateway to dial (required for VARA/ARDOP)
+          --p2p                 dial --gateway as a peer station instead of an
+                                RMS (VARA HF: P2P SESSION); no password needed
           --bandwidth <value>   VARA HF: 500, 2300 or 2750 Hz
                                 ARDOP: 200, 500, 1000 or 2000, with optional
                                 MAX (default) or FORCED suffix
@@ -103,13 +110,22 @@ struct CLI {
             return
         }
 
-        guard let password = env["WL_PASSWORD"], !password.isEmpty else {
-            fail("WL_PASSWORD is not set")
-        }
         let locator = env["WL_LOCATOR"] ?? ""
         let mailboxRoot = URL(
             fileURLWithPath: env["WL_MAILBOX"] ?? "mailbox", isDirectory: true)
         let mailbox = DirectoryMailbox(root: mailboxRoot)
+
+        if command == "listen" {
+            try await listenExchange(
+                callsign: callsign, locator: locator, mailbox: mailbox, options: options)
+            return
+        }
+
+        // A peer station does not ask for the Winlink password.
+        let password = env["WL_PASSWORD"] ?? ""
+        guard !password.isEmpty || options["p2p"] != nil else {
+            fail("WL_PASSWORD is not set")
+        }
         switch command {
         case "send":
             guard let to = options["to"], let subject = options["subject"],
@@ -189,7 +205,8 @@ struct CLI {
                 print("Modem: VARA \(version)")
             }
             print("Dialing \(gateway) — this can take a while over RF ...")
-            let link = try await modem.dial(gateway, bandwidth: options["bandwidth"])
+            let link = try await modem.dial(
+                gateway, bandwidth: options["bandwidth"], p2p: options["p2p"] != nil)
             print("Link established, starting B2F exchange")
 
             try await runSession(
@@ -201,6 +218,62 @@ struct CLI {
             throw error
         }
         await modem.close()
+    }
+
+    /// Waits for a peer station to connect (P2P listen), then runs one
+    /// B2F exchange as master with the caller as target.
+    static func listenExchange(
+        callsign: String, locator: String, mailbox: DirectoryMailbox,
+        options: [String: String]
+    ) async throws {
+        switch options["transport"] ?? "ardop" {
+        case "vara", "varahf", "varafm":
+            let mode: VaraModem.Mode = options["transport"] == "varafm" ? .fm : .hf
+            let config = varaConfig()
+            print("Connecting to VARA modem at \(config.host):\(config.commandPort) ...")
+            let modem = try await VaraModem.connect(mode: mode, mycall: callsign, config: config)
+            await modem.setLogLine { print("  vara: \($0)") }
+            do {
+                print("Listening for a P2P connection to \(callsign) — Ctrl-C to stop ...")
+                let link = try await modem.listen()
+                let peer = link.remoteCall ?? "UNKNOWN"
+                print("\(peer) connected, starting B2F exchange as master")
+                try await runSession(
+                    over: link, targetcall: peer, callsign: callsign, password: "",
+                    locator: locator, mailbox: mailbox, isMaster: true)
+            } catch {
+                await modem.close()
+                throw error
+            }
+            await modem.close()
+
+        case "ardop":
+            let process = try await spawnArdopIfRequested()
+            let config = ardopConfig()
+            print("Connecting to ARDOP TNC at \(config.host):\(config.controlPort) ...")
+            let modem = try await ArdopModem.connect(
+                mycall: callsign, gridSquare: locator, config: config)
+            await modem.setLogLine { print("  ardop: \($0)") }
+            do {
+                try await attachRigctldPTT(to: modem)
+                print("Listening for a P2P connection to \(callsign) — Ctrl-C to stop ...")
+                let link = try await modem.listen()
+                let peer = link.remoteCall ?? "UNKNOWN"
+                print("\(peer) connected, starting B2F exchange as master")
+                try await runSession(
+                    over: link, targetcall: peer, callsign: callsign, password: "",
+                    locator: locator, mailbox: mailbox, isMaster: true)
+            } catch {
+                await modem.close()
+                await process?.stop()
+                throw error
+            }
+            await modem.close()
+            await process?.stop()
+
+        case let other:
+            fail("listen supports --transport ardop, vara or varafm, not '\(other)'")
+        }
     }
 
     /// Connects to the modem program, prints its version and disconnects.
@@ -485,7 +558,7 @@ struct CLI {
     static func runSession(
         over transport: some WinlinkTransport, targetcall: String,
         callsign: String, password: String, locator: String,
-        mailbox: DirectoryMailbox
+        mailbox: DirectoryMailbox, isMaster: Bool = false
     ) async throws {
         let session = B2FSession(
             mycall: callsign,
@@ -493,7 +566,8 @@ struct CLI {
             locator: locator,
             mailbox: mailbox
         )
-        session.secureLoginPassword = password
+        session.isMaster = isMaster
+        session.secureLoginPassword = password.isEmpty ? nil : password
         session.logLine = { print("  \($0)") }
 
         let stats = try await session.exchange(over: transport)

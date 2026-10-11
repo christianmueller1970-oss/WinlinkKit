@@ -18,7 +18,8 @@ Core logic is ported from [wl2k-go](https://github.com/la5nta/wl2k-go)
 - ✅ VARA HF/FM transport (live-tested over RF)
 - ✅ ARDOP transport (TCP; control + framed data channel)
 - ✅ rigctld client for PTT and dial frequency
-- 🔜 Stage 2 remainder: AX.25/AGWPE, listen/P2P mode, see [BACKLOG.md](BACKLOG.md)
+- ✅ P2P: listen mode for ARDOP and VARA (`listen()`), master-side B2F session
+- 🔜 Stage 2 remainder: AX.25/AGWPE, see [BACKLOG.md](BACKLOG.md)
 
 > **Note:** the production CMS (`server.winlink.org`) only accepts registered
 > client types. Until WinlinkKit is registered with the Winlink Development Team,

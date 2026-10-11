@@ -117,8 +117,10 @@ they will likely be tackled. Reference implementations for almost everything:
 
 ## Housekeeping
 
-- [ ] P2P server mode (accept inbound connections as the "master" side is
-      implemented and tested, but has no listener/transport entry point).
+- [x] P2P server mode: `ArdopModem.listen()` / `VaraModem.listen()` wait for
+      an inbound connection and report the caller (`remoteCall`); the
+      `B2FSession` runs as master. `winlinkkit-cli listen` is the wiring
+      test. Still to do: an on-air cross-check against Winlink Express/Pat.
 - [ ] Performance pass over LZHUF (correctness-first port; encoder speed is
       fine for mail-sized payloads, but was never profiled).
 - [ ] DocC catalog (`.docc` bundle) with articles, once the API stabilizes.
