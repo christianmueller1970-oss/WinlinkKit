@@ -3,7 +3,7 @@
 /// Core logic is ported from wl2k-go (https://github.com/la5nta/wl2k-go, MIT).
 public enum WinlinkKit {
     /// Package version, also used in the SID: `[WinlinkKit-<version>-B2FHM$]`.
-    public static let version = "0.5.1"
+    public static let version = "0.6.0"
 }
 
 // The protocol line ending (bare CR, not CRLF) is defined once in
