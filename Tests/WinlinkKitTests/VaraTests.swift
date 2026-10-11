@@ -340,3 +340,22 @@ private struct ModemHarness {
         try await harness.shutdown()
     }
 }
+
+@Suite struct VaraDialReservationTests {
+    /// dial() reserves the modem before its first await, so a listen()
+    /// started meanwhile is refused instead of racing for CONNECTED.
+    @Test func listenIsRefusedWhileDialIsPreparing() async throws {
+        let harness = try await ModemHarness.start()
+        try await harness.expectSetup()
+
+        let dial = Task { try await harness.modem.dial("HB9AK", bandwidth: "2300") }
+        try await harness.commandServer.expect("BW2300")
+        await #expect(throws: WinlinkError.self) {
+            _ = try await harness.modem.listen()
+        }
+        try await harness.commandServer.expect("WINLINK SESSION", "CONNECT HB9HJI HB9AK")
+        await harness.commandServer.send("CONNECTED HB9HJI HB9AK 2300\r")
+        _ = try await dial.value
+        try await harness.shutdown()
+    }
+}

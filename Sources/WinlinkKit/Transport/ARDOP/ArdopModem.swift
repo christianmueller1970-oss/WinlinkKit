@@ -196,17 +196,21 @@ public actor ArdopModem {
             throw WinlinkError.malformedInput("TNC busy (listening, connecting or connected)")
         }
 
-        // Go sets ARQBW temporarily and reverts it on close; we keep
-        // the setting — one modem instance serves one connection.
-        if let bandwidth {
-            try await set("ARQBW", bandwidth.description)
-        }
-
+        // Reserve the link before the first suspension point: a
+        // concurrent listen() must see the TNC as busy.
         linkState = .connecting
-        let answer = expect { $0.endsDial }
+        var answer: CommandExpectation?
         do {
+            // Go sets ARQBW temporarily and reverts it on close; we keep
+            // the setting — one modem instance serves one connection.
+            if let bandwidth {
+                try await set("ARQBW", bandwidth.description)
+            }
+
+            let expectation = expect { $0.endsDial }
+            answer = expectation
             try await writeCommand("ARQCALL \(target.uppercased()) \(connectRequests)")
-            let result = try await value(of: answer, timeout: timeout)
+            let result = try await value(of: expectation, timeout: timeout)
             switch result.name {
             case "CONNECTED":
                 // linkState is set to .connected by the listener.
@@ -222,7 +226,9 @@ public actor ArdopModem {
             if linkState == .connecting {
                 linkState = .disconnected
             }
-            cancel(answer)
+            if let answer {
+                cancel(answer)
+            }
             throw error
         }
     }

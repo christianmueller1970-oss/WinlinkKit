@@ -177,23 +177,27 @@ public actor VaraModem {
             throw WinlinkError.malformedInput("Modem busy (listening, connecting or connected)")
         }
 
-        if let bandwidth {
-            guard Self.bandwidths.contains(bandwidth) else {
-                throw WinlinkError.malformedInput("Bandwidth \(bandwidth) not supported")
-            }
-            try await writeCommand("BW\(bandwidth)")
+        if let bandwidth, !Self.bandwidths.contains(bandwidth) {
+            throw WinlinkError.malformedInput("Bandwidth \(bandwidth) not supported")
         }
 
-        if mode == .hf {
-            // VARA HF distinguishes Winlink and P2P sessions.
-            try await writeCommand(p2p ? "P2P SESSION" : "WINLINK SESSION")
-        }
-
+        // Reserve the link before the first suspension point: a
+        // concurrent listen() must see the modem as busy.
         state = .connecting
-        let answer = expect { $0.endsDial }
+        var answer: CommandExpectation?
         do {
+            if let bandwidth {
+                try await writeCommand("BW\(bandwidth)")
+            }
+            if mode == .hf {
+                // VARA HF distinguishes Winlink and P2P sessions.
+                try await writeCommand(p2p ? "P2P SESSION" : "WINLINK SESSION")
+            }
+
+            let expectation = expect { $0.endsDial }
+            answer = expectation
             try await writeCommand("CONNECT \(mycall) \(target.uppercased())")
-            guard case .connected = try await value(of: answer, timeout: timeout) else {
+            guard case .connected = try await value(of: expectation, timeout: timeout) else {
                 state = .disconnected
                 throw WinlinkError.timeout("Connect to \(target) failed (VARA reported disconnect)")
             }
@@ -201,7 +205,9 @@ public actor VaraModem {
             return VaraConnection(modem: self, remoteCall: target.uppercased())
         } catch {
             state = .disconnected
-            cancel(answer)
+            if let answer {
+                cancel(answer)
+            }
             throw error
         }
     }

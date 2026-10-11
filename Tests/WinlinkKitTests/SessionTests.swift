@@ -650,3 +650,90 @@ private let localSIDLine = "[WinlinkKit-\(WinlinkKit.version)-B2FHM$]"
         #expect(parsed.bodyText == "Test body\r\n")
     }
 }
+
+/// P2P must never hand a peer the whole outbox: a remote without
+/// `;FW` looks like a CMS to a client, and a master's remote is never
+/// a CMS.
+@Suite struct P2PRecipientTests {
+
+    private func message(to call: String, subject: String) -> B2Message {
+        var m = B2Message(mycall: "N0CALL")
+        m.addTo(call)
+        m.setSubject(subject)
+        m.setBody("x\n")
+        return m
+    }
+
+    /// Plays a peer that announces no `;FW` and collects the proposals
+    /// the session under test offers.
+    private func offeredMIDs(_ configure: (B2FSession) -> Void, mailbox: MemoryMailbox)
+        async throws -> [String]
+    {
+        let (sessionEnd, peerEnd) = await PipeTransport.pair()
+        let peer = ScriptedServer(peerEnd)
+        let session = B2FSession(
+            mycall: "N0CALL", targetcall: "LA5NTA", locator: "JO39EQ", mailbox: mailbox)
+        configure(session)
+        let master = session.isMaster
+
+        let run = Task { try await session.exchange(over: sessionEnd) }
+
+        var offered = [String]()
+        if master {
+            // Master greets first; the peer answers with SID only — no ;FW —
+            // and hands the turn over with FF.
+            _ = try await peer.readLine() // SID or ;FW
+            while try await peer.readLine().hasSuffix(">") == false {}
+            await peer.send("[WL2K-5.0-B2FWIHJM$]\r")
+            await peer.send("FF\r")
+        } else {
+            await peer.send("[WL2K-5.0-B2FWIHJM$]\r")
+            await peer.send("LA5NTA >\r")
+            while try await peer.readLine().hasPrefix("; LA5NTA DE") == false {}
+        }
+        while true {
+            let line = try await peer.readLine()
+            if line.hasPrefix("FC ") {
+                offered.append(String(line.split(separator: " ")[2]))
+            } else if line.hasPrefix("F>") {
+                await peer.send("FS " + String(repeating: "-", count: offered.count) + "\r")
+                await peer.send("FQ\r")
+                break
+            } else if line == "FF" || line == "FQ" {
+                await peer.send("FQ\r")
+                break
+            }
+        }
+        _ = try? await run.value
+        await peerEnd.close()
+        return offered
+    }
+
+    @Test func masterOffersOnlyMessagesForTheCaller() async throws {
+        let box = MemoryMailbox()
+        let forPeer = message(to: "LA5NTA", subject: "für den Anrufer")
+        await box.addOutbound(forPeer)
+        await box.addOutbound(message(to: "HB9ABC", subject: "fremd"))
+
+        let offered = try await offeredMIDs({ $0.isMaster = true }, mailbox: box)
+        #expect(offered == [forPeer.mid])
+    }
+
+    @Test func clientWithRecipientsIgnoresMissingFW() async throws {
+        let box = MemoryMailbox()
+        let forPeer = message(to: "LA5NTA", subject: "für die Gegenstation")
+        await box.addOutbound(forPeer)
+        await box.addOutbound(message(to: "HB9ABC", subject: "fremd"))
+
+        let offered = try await offeredMIDs(
+            { $0.outboundRecipients = [Address(string: "LA5NTA")] }, mailbox: box)
+        #expect(offered == [forPeer.mid])
+    }
+
+    @Test func emptyRecipientsOfferNothing() async throws {
+        let box = MemoryMailbox()
+        await box.addOutbound(message(to: "LA5NTA", subject: "a"))
+        let offered = try await offeredMIDs({ $0.outboundRecipients = [] }, mailbox: box)
+        #expect(offered.isEmpty)
+    }
+}
