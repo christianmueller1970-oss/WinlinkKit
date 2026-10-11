@@ -505,3 +505,78 @@ private struct TNCHarness {
         try await call
     }
 }
+
+@Suite struct ArdopListenTests {
+
+    /// listen() switches LISTEN on, takes the caller from CONNECTED and
+    /// switches LISTEN off again — one station at a time.
+    @Test func listenAcceptsInboundConnection() async throws {
+        let harness = await TNCHarness.start()
+        try await harness.performSetup()
+
+        async let link = harness.modem.listen()
+        try await harness.commandServer.expect("LISTEN true")
+        await harness.commandServer.send("LISTEN now True\r")
+        await harness.commandServer.send("PENDING\r")
+        await harness.commandServer.send("NEWSTATE IRS\r") // must not end the wait
+        await harness.commandServer.send("CONNECTED hb9xyz 500\r")
+        try await harness.commandServer.expect("LISTEN false")
+        await harness.commandServer.send("LISTEN now False\r")
+
+        let connection = try await link
+        #expect(connection.remoteCall == "HB9XYZ")
+        #expect(await harness.modem.linkState == .connected)
+        #expect(await harness.modem.isListening == false)
+        try await harness.shutdown()
+    }
+
+    /// stopListening() ends the wait with connectionClosed and turns
+    /// LISTEN off.
+    @Test func stopListeningEndsTheWait() async throws {
+        let harness = await TNCHarness.start()
+        try await harness.performSetup()
+
+        let wait = Task { try await harness.modem.listen() }
+        try await harness.commandServer.expect("LISTEN true")
+        await harness.commandServer.send("LISTEN now True\r")
+        #expect(await harness.modem.isListening)
+
+        await harness.modem.stopListening()
+        try await harness.commandServer.expect("LISTEN false")
+        await harness.commandServer.send("LISTEN now False\r")
+
+        await #expect(throws: WinlinkError.connectionClosed) {
+            _ = try await wait.value
+        }
+        #expect(await harness.modem.isListening == false)
+        #expect(await harness.modem.linkState == .disconnected)
+        await harness.modem.close()
+    }
+
+    /// While listening, dialing out is refused instead of tangling both.
+    @Test func dialIsRefusedWhileListening() async throws {
+        let harness = await TNCHarness.start()
+        try await harness.performSetup()
+
+        let wait = Task { try await harness.modem.listen() }
+        try await harness.commandServer.expect("LISTEN true")
+        await harness.commandServer.send("LISTEN now True\r")
+
+        await #expect(throws: WinlinkError.self) {
+            _ = try await harness.modem.dial("HB9AK")
+        }
+        await harness.modem.close()
+        await #expect(throws: WinlinkError.self) {
+            _ = try await wait.value
+        }
+    }
+
+    /// A dialed link reports the target as remote call.
+    @Test func dialedLinkKnowsItsRemote() async throws {
+        let harness = await TNCHarness.start()
+        try await harness.performSetup()
+        let link = try await harness.dial("HB9AK")
+        #expect(link.remoteCall == "HB9AK")
+        try await harness.shutdown()
+    }
+}

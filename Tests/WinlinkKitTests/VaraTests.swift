@@ -292,3 +292,51 @@ private struct ModemHarness {
         await harness.modem.close()
     }
 }
+
+@Suite struct VaraListenTests {
+
+    /// VARA HF listens in a P2P session; the caller is the CONNECTED
+    /// source, and LISTEN goes off again afterwards.
+    @Test func listenAcceptsInboundP2PConnection() async throws {
+        let harness = try await ModemHarness.start()
+        try await harness.expectSetup()
+
+        async let link = harness.modem.listen()
+        try await harness.commandServer.expect("P2P SESSION", "LISTEN ON")
+        await harness.commandServer.send("PENDING\r")
+        await harness.commandServer.send("CONNECTED hb9xyz HB9HJI 2300\r")
+        try await harness.commandServer.expect("LISTEN OFF")
+
+        let connection = try await link
+        #expect(connection.remoteCall == "HB9XYZ")
+        #expect(await harness.modem.state == .connected)
+        #expect(await harness.modem.isListening == false)
+        try await harness.shutdown()
+    }
+
+    /// VARA FM has no session types — only LISTEN ON.
+    @Test func listenOnFMSkipsSessionType() async throws {
+        let harness = try await ModemHarness.start(mode: .fm)
+        try await harness.expectSetup(cwid: false)
+
+        let wait = Task { try await harness.modem.listen() }
+        try await harness.commandServer.expect("LISTEN ON")
+        await harness.modem.stopListening()
+        try await harness.commandServer.expect("LISTEN OFF")
+        await #expect(throws: WinlinkError.connectionClosed) {
+            _ = try await wait.value
+        }
+        await harness.modem.close()
+    }
+
+    @Test func dialedLinkKnowsItsRemote() async throws {
+        let harness = try await ModemHarness.start()
+        try await harness.expectSetup()
+
+        async let connection = harness.modem.dial("hb9xyz", p2p: true)
+        try await harness.commandServer.expect("P2P SESSION", "CONNECT HB9HJI HB9XYZ")
+        await harness.commandServer.send("CONNECTED HB9HJI HB9XYZ 2300\r")
+        #expect(try await connection.remoteCall == "HB9XYZ")
+        try await harness.shutdown()
+    }
+}
