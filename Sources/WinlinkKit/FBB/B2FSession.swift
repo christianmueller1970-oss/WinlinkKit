@@ -7,10 +7,21 @@ public struct TrafficStats: Sendable, Equatable {
     public internal(set) var received: [String] = []
     /// MIDs of successfully sent messages.
     public internal(set) var sent: [String] = []
+    /// Message bytes put on the wire (compressed, with transfer
+    /// framing) — what the link actually had to carry, for throughput
+    /// bookkeeping. Proposal and handshake lines are not counted.
+    public internal(set) var bytesSent: Int = 0
+    /// Message bytes taken off the wire, same measure as `bytesSent`.
+    public internal(set) var bytesReceived: Int = 0
 
-    public init(received: [String] = [], sent: [String] = []) {
+    public init(
+        received: [String] = [], sent: [String] = [],
+        bytesSent: Int = 0, bytesReceived: Int = 0
+    ) {
         self.received = received
         self.sent = sent
+        self.bytesSent = bytesSent
+        self.bytesReceived = bytesReceived
     }
 }
 
@@ -532,6 +543,7 @@ public final class B2FSession {
 
         guard let transport else { throw WinlinkError.connectionClosed }
         try await transport.write(out)
+        stats.bytesSent += out.count
     }
 
     /// Receives one accepted inbound message into the proposal's
@@ -578,6 +590,10 @@ public final class B2FSession {
 
         var buf = [UInt8]()
         var ourChecksum = 0
+        // Framing bytes actually read (STX + length per block, EOT +
+        // checksum), so `bytesReceived` mirrors what the link carried
+        // whatever block size the remote uses.
+        var framingBytes = 0
         while true {
             switch try await reader.readByte() {
             case FBBControl.stx:
@@ -585,6 +601,7 @@ public final class B2FSession {
                 if length == 0 {
                     length = 256 // A zero length byte means a full 256-byte block.
                 }
+                framingBytes += 2
                 for _ in 0..<length {
                     let b = try await reader.readByte()
                     buf.append(b)
@@ -601,6 +618,9 @@ public final class B2FSession {
                     throw WinlinkError.malformedInput("Length mismatch after EOT")
                 }
                 p.compressedData = buf
+                // SOH + length byte + transfer header, then data and
+                // framing, then EOT + checksum.
+                stats.bytesReceived += 2 + headerLength + buf.count + framingBytes + 2
                 return
 
             case let c:

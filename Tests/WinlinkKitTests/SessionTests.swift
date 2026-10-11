@@ -417,6 +417,12 @@ private let localSIDLine = "[WinlinkKit-\(WinlinkKit.version)-B2FHM$]"
         #expect(master.received == [mid])
         #expect(master.sent.isEmpty)
 
+        // Both ends count the same framed message bytes.
+        #expect(client.bytesSent > 0)
+        #expect(client.bytesReceived == 0)
+        #expect(master.bytesReceived == client.bytesSent)
+        #expect(master.bytesSent == 0)
+
         let received = await masterBox.inbox
         try #require(received.count == 1)
         #expect(received[0].mid == mid)
