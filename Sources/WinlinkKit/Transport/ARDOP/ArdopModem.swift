@@ -50,6 +50,10 @@ public actor ArdopModem {
     private(set) var linkState: LinkState = .disconnected
     private var closed = false
 
+    /// True while `listen()` waits for an inbound ARQ connection.
+    public private(set) var isListening = false
+    private var listenExpectation: CommandExpectation?
+
     /// The last state reported by the TNC (NEWSTATE/STATE).
     public private(set) var tncState: ArdopState = .unknown
 
@@ -154,8 +158,8 @@ public actor ArdopModem {
         }
         try await set("PROTOCOLMODE", "ARQ")
         try await set("ARQTIMEOUT", "\(Self.defaultARQTimeout)")
-        // Only answer inbound ARQ connect requests when requested by
-        // the user (listen mode is stage-2 backlog).
+        // Only answer inbound ARQ connect requests when the host asks
+        // for it via `listen()`.
         try await set("LISTEN", "false")
         try await set("MYCALL", mycall)
         // Go sends GRIDSQUARE unconditionally, but an empty value
@@ -188,25 +192,29 @@ public actor ArdopModem {
         timeout: TimeInterval = 300
     ) async throws -> ArdopConnection {
         guard !closed else { throw WinlinkError.connectionClosed }
-        guard linkState == .disconnected else {
-            throw WinlinkError.malformedInput("TNC busy (already connecting or connected)")
+        guard linkState == .disconnected, !isListening else {
+            throw WinlinkError.malformedInput("TNC busy (listening, connecting or connected)")
         }
 
-        // Go sets ARQBW temporarily and reverts it on close; we keep
-        // the setting — one modem instance serves one connection.
-        if let bandwidth {
-            try await set("ARQBW", bandwidth.description)
-        }
-
+        // Reserve the link before the first suspension point: a
+        // concurrent listen() must see the TNC as busy.
         linkState = .connecting
-        let answer = expect { $0.endsDial }
+        var answer: CommandExpectation?
         do {
+            // Go sets ARQBW temporarily and reverts it on close; we keep
+            // the setting — one modem instance serves one connection.
+            if let bandwidth {
+                try await set("ARQBW", bandwidth.description)
+            }
+
+            let expectation = expect { $0.endsDial }
+            answer = expectation
             try await writeCommand("ARQCALL \(target.uppercased()) \(connectRequests)")
-            let result = try await value(of: answer, timeout: timeout)
+            let result = try await value(of: expectation, timeout: timeout)
             switch result.name {
             case "CONNECTED":
                 // linkState is set to .connected by the listener.
-                return ArdopConnection(modem: self)
+                return ArdopConnection(modem: self, remoteCall: target.uppercased())
             case "FAULT":
                 linkState = .disconnected
                 throw WinlinkError.remoteError(result.stringValue ?? "FAULT")
@@ -218,9 +226,61 @@ public actor ArdopModem {
             if linkState == .connecting {
                 linkState = .disconnected
             }
-            cancel(answer)
+            if let answer {
+                cancel(answer)
+            }
             throw error
         }
+    }
+
+    // MARK: - Listening (P2P; Go: TNC.Listen)
+
+    /// Waits for another station to connect (P2P) and returns the link.
+    ///
+    /// Sets `LISTEN true`, so the TNC answers inbound ARQ connect
+    /// requests addressed to `mycall`, and resolves on `CONNECTED
+    /// <call> <bandwidth>`. Right after the connection the TNC is put
+    /// back to `LISTEN false` — one station at a time; call `listen()`
+    /// again to wait for the next one. The calling station's callsign
+    /// is in `ArdopConnection.remoteCall`; run the `B2FSession` as
+    /// master (`isMaster = true`) with that call as target.
+    ///
+    /// `stopListening()` or `close()` ends the wait with
+    /// `WinlinkError.connectionClosed`.
+    public func listen(timeout: TimeInterval = 24 * 3600) async throws -> ArdopConnection {
+        guard !closed else { throw WinlinkError.connectionClosed }
+        guard linkState == .disconnected, !isListening else {
+            throw WinlinkError.malformedInput("TNC busy (listening, connecting or connected)")
+        }
+
+        // Subscribe before switching LISTEN on, so a quick caller is
+        // not missed.
+        let answer = expect { $0.name == "CONNECTED" }
+        listenExpectation = answer
+        isListening = true
+        defer {
+            isListening = false
+            listenExpectation = nil
+        }
+
+        do {
+            try await set("LISTEN", "true")
+            let result = try await value(of: answer, timeout: timeout)
+            let remote = result.listValue?.first?.uppercased()
+            try? await set("LISTEN", "false")
+            return ArdopConnection(modem: self, remoteCall: remote)
+        } catch {
+            cancel(answer)
+            try? await set("LISTEN", "false")
+            throw error
+        }
+    }
+
+    /// Ends a pending `listen()`; it throws `connectionClosed`. No-op
+    /// once a station has connected.
+    public func stopListening() {
+        guard let listenExpectation else { return }
+        fulfill(listenExpectation, with: .failure(.connectionClosed))
     }
 
     /// The TNC's version string (Go: TNC.Version).
@@ -577,8 +637,7 @@ public actor ArdopModem {
                 dataInbox.append(frame.payload)
             }
         case "IDF", "FEC", "ERR":
-            // Heard-station tracking (ID frames) is not ported —
-            // listen/P2P mode is stage-2 backlog.
+            // Heard-station tracking (ID frames) is not ported.
             logLine?("[\(frame.type)] \(String(decoding: frame.payload, as: UTF8.self))")
         default:
             break
@@ -612,6 +671,14 @@ extension ArdopCommand {
 /// channels to the TNC — the modem can dial again.
 public struct ArdopConnection: WinlinkTransport {
     let modem: ArdopModem
+    /// The other station: the dialed target, or the caller reported by
+    /// `CONNECTED` after `listen()`.
+    public var remoteCall: String?
+
+    init(modem: ArdopModem, remoteCall: String? = nil) {
+        self.modem = modem
+        self.remoteCall = remoteCall
+    }
 
     public func read() async throws -> Data {
         try await modem.readData()

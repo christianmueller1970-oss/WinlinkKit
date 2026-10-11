@@ -61,6 +61,16 @@ public final class B2FSession {
     /// Lines sent before the handshake when master (Go: SetMOTD).
     public var motd: [String] = []
 
+    /// Restricts what is offered to messages addressed exclusively to
+    /// these addresses, whatever the remote announces in `;FW`. Set it
+    /// for P2P: a peer that sends no `;FW` would otherwise look like a
+    /// CMS and get the whole outbox. An empty list offers nothing.
+    ///
+    /// nil (default): a client uses the remote's `;FW` (empty = CMS,
+    /// everything); a master — whose remote is never a CMS — falls back
+    /// to `targetcall`.
+    public var outboundRecipients: [Address]?
+
     /// The password used to answer a secure login challenge (;PQ).
     /// Stage 1 supports a single account password; per-address callbacks
     /// for auxiliary addresses are a stage-2 item (Go: SecureLoginHandleFunc).
@@ -313,7 +323,15 @@ public final class B2FSession {
     private func outboundProposals() async -> [Proposal] {
         guard let mailbox else { return [] }
 
-        let messages = await mailbox.outboundMessages(for: remoteForwarders)
+        let recipients =
+            outboundRecipients
+            ?? (isMaster ? [Address(string: targetcall)] : remoteForwarders)
+        // An empty list means "the CMS gets everything" to the mailbox —
+        // never what an explicit restriction asks for.
+        if outboundRecipients != nil, recipients.isEmpty {
+            return []
+        }
+        let messages = await mailbox.outboundMessages(for: recipients)
         var proposals = [Proposal]()
         for message in messages {
             do {

@@ -48,6 +48,10 @@ public actor VaraModem {
     private(set) var state: LinkState = .disconnected
     private var closed = false
 
+    /// True while `listen()` waits for an inbound connection.
+    public private(set) var isListening = false
+    private var listenExpectation: CommandExpectation?
+
     /// True while the modem reports the channel as busy (BUSY ON/OFF).
     public private(set) var isBusy = false
 
@@ -169,37 +173,99 @@ public actor VaraModem {
         timeout: TimeInterval = 300
     ) async throws -> VaraConnection {
         guard !closed else { throw WinlinkError.connectionClosed }
-        guard state == .disconnected else {
-            throw WinlinkError.malformedInput("Modem busy (already connecting or connected)")
+        guard state == .disconnected, !isListening else {
+            throw WinlinkError.malformedInput("Modem busy (listening, connecting or connected)")
         }
 
-        if let bandwidth {
-            guard Self.bandwidths.contains(bandwidth) else {
-                throw WinlinkError.malformedInput("Bandwidth \(bandwidth) not supported")
-            }
-            try await writeCommand("BW\(bandwidth)")
+        if let bandwidth, !Self.bandwidths.contains(bandwidth) {
+            throw WinlinkError.malformedInput("Bandwidth \(bandwidth) not supported")
         }
 
-        if mode == .hf {
-            // VARA HF distinguishes Winlink and P2P sessions.
-            try await writeCommand(p2p ? "P2P SESSION" : "WINLINK SESSION")
-        }
-
+        // Reserve the link before the first suspension point: a
+        // concurrent listen() must see the modem as busy.
         state = .connecting
-        let answer = expect { $0.endsDial }
+        var answer: CommandExpectation?
         do {
+            if let bandwidth {
+                try await writeCommand("BW\(bandwidth)")
+            }
+            if mode == .hf {
+                // VARA HF distinguishes Winlink and P2P sessions.
+                try await writeCommand(p2p ? "P2P SESSION" : "WINLINK SESSION")
+            }
+
+            let expectation = expect { $0.endsDial }
+            answer = expectation
             try await writeCommand("CONNECT \(mycall) \(target.uppercased())")
-            guard case .connected = try await value(of: answer, timeout: timeout) else {
+            guard case .connected = try await value(of: expectation, timeout: timeout) else {
                 state = .disconnected
                 throw WinlinkError.timeout("Connect to \(target) failed (VARA reported disconnect)")
             }
             // state is set to .connected by the listener.
-            return VaraConnection(modem: self)
+            return VaraConnection(modem: self, remoteCall: target.uppercased())
         } catch {
             state = .disconnected
-            cancel(answer)
+            if let answer {
+                cancel(answer)
+            }
             throw error
         }
+    }
+
+    // MARK: - Listening (P2P)
+
+    /// Waits for another station to connect and returns the link.
+    ///
+    /// VARA HF is put into `P2P SESSION` (or `WINLINK SESSION` with
+    /// `p2p: false`), then `LISTEN ON`; resolves on `CONNECTED <source>
+    /// <destination> …`, where the source is the calling station
+    /// (`VaraConnection.remoteCall`). Afterwards `LISTEN OFF` — one
+    /// station at a time. Run the `B2FSession` as master with the
+    /// caller as target.
+    ///
+    /// `stopListening()` or `close()` ends the wait with
+    /// `WinlinkError.connectionClosed`.
+    public func listen(p2p: Bool = true, timeout: TimeInterval = 24 * 3600) async throws
+        -> VaraConnection
+    {
+        guard !closed else { throw WinlinkError.connectionClosed }
+        guard state == .disconnected, !isListening else {
+            throw WinlinkError.malformedInput("Modem busy (listening, connecting or connected)")
+        }
+
+        let answer = expect {
+            if case .connected = $0 { return true }
+            return false
+        }
+        listenExpectation = answer
+        isListening = true
+        defer {
+            isListening = false
+            listenExpectation = nil
+        }
+
+        do {
+            if mode == .hf {
+                try await writeCommand(p2p ? "P2P SESSION" : "WINLINK SESSION")
+            }
+            try await writeCommand("LISTEN ON")
+            let result = try await value(of: answer, timeout: timeout)
+            try? await writeCommand("LISTEN OFF")
+            guard case .connected(let source, _) = result else {
+                throw WinlinkError.malformedInput("Unexpected answer while listening")
+            }
+            return VaraConnection(modem: self, remoteCall: source.uppercased())
+        } catch {
+            cancel(answer)
+            try? await writeCommand("LISTEN OFF")
+            throw error
+        }
+    }
+
+    /// Ends a pending `listen()`; it throws `connectionClosed`.
+    public func stopListening() {
+        guard let listenExpectation else { return }
+        fulfill(listenExpectation, with: .failure(.connectionClosed))
     }
 
     /// The modem program's version string (Go: Version).
@@ -466,6 +532,14 @@ public actor VaraModem {
 /// channels to the modem program — the modem can dial again.
 public struct VaraConnection: WinlinkTransport {
     let modem: VaraModem
+    /// The other station: the dialed target, or the caller reported by
+    /// `CONNECTED` after `listen()`.
+    public var remoteCall: String?
+
+    init(modem: VaraModem, remoteCall: String? = nil) {
+        self.modem = modem
+        self.remoteCall = remoteCall
+    }
 
     public func read() async throws -> Data {
         try await modem.readData()
