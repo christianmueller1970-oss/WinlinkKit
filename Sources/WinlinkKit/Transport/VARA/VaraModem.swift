@@ -347,6 +347,21 @@ public actor VaraModem {
     func disconnectLink() async {
         guard state != .disconnected, !closed else { return }
 
+        // Still calling: there is no link to close gracefully, and VARA
+        // would keep calling until DISCONNECT times out. ABORT stops the
+        // call at once.
+        if state == .connecting {
+            let done = expect { $0 == .disconnected }
+            do {
+                try await writeCommand("ABORT")
+                _ = try await value(of: done, timeout: Self.abortTimeout)
+            } catch {
+                cancel(done)
+                handle(.disconnected)
+            }
+            return
+        }
+
         // VARA flushes the TX buffer before disconnecting, but the last
         // written data must have reached the modem first (cmd and data
         // are separate TCP streams). Pat waits 2 s since the last write;
@@ -363,6 +378,9 @@ public actor VaraModem {
             handle(.disconnected)
         }
     }
+
+    /// Upper bound for VARA to confirm an ABORT.
+    static let abortTimeout: TimeInterval = 5
 
     // MARK: - Command channel
 

@@ -132,6 +132,27 @@ private struct ModemHarness {
         await harness.modem.close()
     }
 
+    /// Closing while VARA is still calling aborts at once: ABORT, not a
+    /// graceful DISCONNECT that waits up to 60 s.
+    @Test func closeWhileDialingAborts() async throws {
+        let harness = try await ModemHarness.start()
+        try await harness.expectSetup()
+
+        let dial = Task { try await harness.modem.dial("HB9AK") }
+        try await harness.commandServer.expect("WINLINK SESSION", "CONNECT HB9HJI HB9AK")
+
+        let closer = Task { await harness.modem.close() }
+        try await harness.commandServer.expect("ABORT")
+        await harness.commandServer.send("DISCONNECTED\r")
+        await closer.value
+
+        await #expect(throws: WinlinkError.self) {
+            _ = try await dial.value
+        }
+        let state = await harness.modem.state
+        #expect(state == .disconnected)
+    }
+
     /// An invalid bandwidth is rejected before touching the modem.
     @Test func dialRejectsInvalidBandwidth() async throws {
         let harness = try await ModemHarness.start()
