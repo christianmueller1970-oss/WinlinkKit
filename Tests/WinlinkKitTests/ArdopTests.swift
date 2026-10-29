@@ -285,6 +285,28 @@ private struct TNCHarness {
         await harness.modem.close()
     }
 
+    /// Closing while the TNC is still calling aborts at once: ABORT, not
+    /// a graceful DISCONNECT (ardopcf would key up for repeated DISC
+    /// frames to a station that never answered).
+    @Test func closeWhileDialingAborts() async throws {
+        let harness = await TNCHarness.start()
+        try await harness.performSetup()
+
+        let dial = Task { try await harness.modem.dial("HB9AK") }
+        try await harness.commandServer.expect("ARQCALL HB9AK 10")
+        await harness.commandServer.send("NEWSTATE ISS\r")
+
+        let closer = Task { await harness.modem.close() }
+        try await harness.commandServer.expect("ABORT")
+        await harness.commandServer.send("NEWSTATE DISC\r")
+        await closer.value
+
+        await #expect(throws: WinlinkError.self) {
+            _ = try await dial.value
+        }
+        #expect(await harness.modem.linkState == .disconnected)
+    }
+
     /// A FAULT reply to ARQCALL surfaces as a remote error.
     @Test func dialFault() async throws {
         let harness = await TNCHarness.start()

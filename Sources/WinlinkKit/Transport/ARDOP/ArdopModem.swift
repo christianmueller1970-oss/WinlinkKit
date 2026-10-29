@@ -405,6 +405,14 @@ public actor ArdopModem {
     func disconnectLink() async {
         guard linkState != .disconnected, !closed else { return }
 
+        // Still calling: there is no link to close gracefully. DISCONNECT
+        // would make ardopcf key up for repeated DISC frames to a station
+        // that never answered; ABORT stops the call at the next frame.
+        if linkState == .connecting {
+            await abortCall()
+            return
+        }
+
         // ARDOP disconnects without sending queued data, so wait for
         // the buffer to drain first.
         let flushDeadline = Date().addingTimeInterval(30)
@@ -433,6 +441,22 @@ public actor ArdopModem {
             linkDown()
         }
     }
+
+    /// Stops an outgoing call at once (ABORT) and waits briefly for the
+    /// TNC to report the link down; the pending dial() then fails.
+    private func abortCall() async {
+        let done = expect { $0.endsLink }
+        do {
+            try await writeCommand("ABORT")
+            _ = try await value(of: done, timeout: Self.abortTimeout)
+        } catch {
+            cancel(done)
+            linkDown()
+        }
+    }
+
+    /// Upper bound for the TNC to confirm an ABORT.
+    static let abortTimeout: TimeInterval = 5
 
     // MARK: - Control channel
 
