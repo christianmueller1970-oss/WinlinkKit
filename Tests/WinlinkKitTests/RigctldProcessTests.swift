@@ -94,6 +94,73 @@ private func makeFakeExecutable(_ script: String) throws -> URL {
         #expect(await process.processIdentifier == nil)
     }
 
+    /// When the app dies — crash or force quit, no termination hook —
+    /// the supervision pipe closes and rigctld must go with it.
+    @Test func childEndsWhenTheParentGoesAway() async throws {
+        let port = UInt16.random(in: 40000..<60000)
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rigctld-fake-\(UUID().uuidString).pid")
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        let exe = try makeFakeExecutable("""
+            exec python3 -c '
+            import os, socket, signal, sys
+            open("\(pidFile.path)", "w").write(str(os.getpid()))
+            signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))
+            s = socket.socket()
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.1", \(port)))
+            s.listen(4)
+            while True:
+                c, _ = s.accept()
+                c.close()
+            '
+            """)
+        let process = RigctldProcess(
+            executable: exe, config: RigctldLaunchConfig(model: 1, listenPort: port))
+        try await process.start(readyTimeout: .seconds(15))
+        let daemon = try #require(Int32(try String(contentsOf: pidFile, encoding: .utf8)))
+        #expect(kill(daemon, 0) == 0)
+
+        await process.dropLifelineForTesting()
+
+        let deadline = ContinuousClock.now + .seconds(5)
+        while kill(daemon, 0) == 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(kill(daemon, 0) != 0)
+        #expect(await process.isRunning == false)
+    }
+
+    /// stop() reaches the real daemon behind the supervisor.
+    @Test func stopEndsTheDaemonBehindTheSupervisor() async throws {
+        let port = UInt16.random(in: 40000..<60000)
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rigctld-fake-\(UUID().uuidString).pid")
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        let exe = try makeFakeExecutable("""
+            exec python3 -c '
+            import os, socket, signal, sys
+            open("\(pidFile.path)", "w").write(str(os.getpid()))
+            signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))
+            s = socket.socket()
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.1", \(port)))
+            s.listen(4)
+            while True:
+                c, _ = s.accept()
+                c.close()
+            '
+            """)
+        let process = RigctldProcess(
+            executable: exe, config: RigctldLaunchConfig(model: 1, listenPort: port))
+        try await process.start(readyTimeout: .seconds(15))
+        let daemon = try #require(Int32(try String(contentsOf: pidFile, encoding: .utf8)))
+        #expect(daemon != (await process.processIdentifier))
+
+        await process.stop(gracePeriod: .seconds(3))
+        #expect(kill(daemon, 0) != 0)
+    }
+
     /// rigctld that cannot open the rig exits at once — the error
     /// carries what it printed.
     @Test func earlyExitThrowsWithCapturedLog() async throws {
