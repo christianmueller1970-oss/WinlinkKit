@@ -13,8 +13,8 @@ public enum ArdopProcessError: Error, Sendable, Equatable {
 }
 
 /// Collects process output lines; safe to touch from the pipe-reader
-/// queues and the actor.
-private final class LineCollector: @unchecked Sendable {
+/// queues and the actor. Shared with `RigctldProcess`.
+final class LineCollector: @unchecked Sendable {
     private let lock = NSLock()
     private var partial = [FileHandle: String]()
     private var lastLines = [String]()
