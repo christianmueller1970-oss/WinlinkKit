@@ -160,5 +160,106 @@ private func makeFakeExecutable(_ script: String) throws -> URL {
         #expect(seen.contains("line one"))
         #expect(seen.contains("line two"))
     }
+    /// A fake TNC that records its PID and the signal that ended it.
+    private func makeRecordingTNC(port: UInt16, pidFile: URL, signalFile: URL) throws -> URL {
+        try makeFakeExecutable("""
+            exec python3 -c '
+            import os, socket, signal, sys
+            def end(name):
+                open("\(signalFile.path)", "w").write(name)
+                sys.exit(0)
+            signal.signal(signal.SIGINT, lambda *a: end("INT"))
+            signal.signal(signal.SIGTERM, lambda *a: end("TERM"))
+            open("\(pidFile.path)", "w").write(str(os.getpid()))
+            s = socket.socket()
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.1", \(port)))
+            s.listen(4)
+            while True:
+                c, _ = s.accept()
+                c.close()
+            '
+            """)
+    }
+
+    /// When the app dies — crash or force quit, no termination hook —
+    /// the supervision pipe closes and ardopcf must go with it.
+    @Test func childEndsWhenTheParentGoesAway() async throws {
+        let port = UInt16.random(in: 20000..<40000)
+        let tmp = FileManager.default.temporaryDirectory
+        let pidFile = tmp.appendingPathComponent("ardop-fake-\(UUID().uuidString).pid")
+        let signalFile = tmp.appendingPathComponent("ardop-fake-\(UUID().uuidString).sig")
+        defer {
+            try? FileManager.default.removeItem(at: pidFile)
+            try? FileManager.default.removeItem(at: signalFile)
+        }
+        let exe = try makeRecordingTNC(port: port, pidFile: pidFile, signalFile: signalFile)
+        let process = ArdopProcess(executable: exe, config: ArdopLaunchConfig(controlPort: port))
+        try await process.start(readyTimeout: .seconds(15))
+        let tnc = try #require(Int32(try String(contentsOf: pidFile, encoding: .utf8)))
+        #expect(kill(tnc, 0) == 0)
+
+        await process.dropLifelineForTesting()
+
+        let deadline = ContinuousClock.now + .seconds(5)
+        while kill(tnc, 0) == 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(kill(tnc, 0) != 0)
+        #expect(try String(contentsOf: signalFile, encoding: .utf8) == "TERM")
+    }
+
+    /// stop() still shuts ardopcf down with SIGINT first — the
+    /// supervisor passes the signal on unchanged.
+    @Test func stopReachesTheTNCWithSIGINT() async throws {
+        let port = UInt16.random(in: 20000..<40000)
+        let tmp = FileManager.default.temporaryDirectory
+        let pidFile = tmp.appendingPathComponent("ardop-fake-\(UUID().uuidString).pid")
+        let signalFile = tmp.appendingPathComponent("ardop-fake-\(UUID().uuidString).sig")
+        defer {
+            try? FileManager.default.removeItem(at: pidFile)
+            try? FileManager.default.removeItem(at: signalFile)
+        }
+        let exe = try makeRecordingTNC(port: port, pidFile: pidFile, signalFile: signalFile)
+        let process = ArdopProcess(executable: exe, config: ArdopLaunchConfig(controlPort: port))
+        try await process.start(readyTimeout: .seconds(15))
+        let tnc = try #require(Int32(try String(contentsOf: pidFile, encoding: .utf8)))
+        #expect(tnc != (await process.processIdentifier))
+
+        let started = ContinuousClock.now
+        await process.stop(gracePeriod: .seconds(3))
+        #expect(kill(tnc, 0) != 0)
+        #expect(try String(contentsOf: signalFile, encoding: .utf8) == "INT")
+        // Well inside the first grace period: no escalation was needed.
+        #expect(ContinuousClock.now - started < .seconds(2))
+    }
+
+    /// A synchronous SIGINT to `processIdentifier` (app-termination
+    /// hook) reaches ardopcf as SIGINT.
+    @Test func signalToProcessIdentifierReachesTheTNC() async throws {
+        let port = UInt16.random(in: 20000..<40000)
+        let tmp = FileManager.default.temporaryDirectory
+        let pidFile = tmp.appendingPathComponent("ardop-fake-\(UUID().uuidString).pid")
+        let signalFile = tmp.appendingPathComponent("ardop-fake-\(UUID().uuidString).sig")
+        defer {
+            try? FileManager.default.removeItem(at: pidFile)
+            try? FileManager.default.removeItem(at: signalFile)
+        }
+        let exe = try makeRecordingTNC(port: port, pidFile: pidFile, signalFile: signalFile)
+        let process = ArdopProcess(executable: exe, config: ArdopLaunchConfig(controlPort: port))
+        try await process.start(readyTimeout: .seconds(15))
+        let tnc = try #require(Int32(try String(contentsOf: pidFile, encoding: .utf8)))
+        let supervisor = try #require(await process.processIdentifier)
+
+        kill(supervisor, SIGINT)
+
+        let deadline = ContinuousClock.now + .seconds(5)
+        while kill(tnc, 0) == 0 || kill(supervisor, 0) == 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(kill(tnc, 0) != 0)
+        #expect(try String(contentsOf: signalFile, encoding: .utf8) == "INT")
+        await process.stop(gracePeriod: .seconds(1))
+    }
 }
 #endif

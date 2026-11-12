@@ -64,11 +64,18 @@ final class LineCollector: @unchecked Sendable {
 /// from there. `stop()` shuts down with escalating signals
 /// (SIGINT → SIGTERM → SIGKILL); ardopcf handles INT and TERM
 /// gracefully.
+///
+/// ardopcf never outlives the process that started it: it runs under a
+/// supervisor that ends it when the parent exits, crashes included.
+/// `processIdentifier` is the supervisor's PID; SIGINT and SIGTERM sent
+/// to it reach ardopcf.
 public actor ArdopProcess {
     private let executable: URL
     private let config: ArdopLaunchConfig
     private var process: Process?
     private var collector: LineCollector?
+    /// Write end of the supervision pipe; see `ProcessSupervisor`.
+    private var lifeline: FileHandle?
 
     /// Merged stdout/stderr of the process, line by line. A single
     /// consumer may iterate this; the stream ends when the process
@@ -96,9 +103,13 @@ public actor ArdopProcess {
     public func start(readyTimeout: Duration = .seconds(10)) async throws {
         precondition(process == nil, "ArdopProcess.start() called twice")
 
+        // ardopcf runs under a small shell supervisor that ends it as
+        // soon as this process goes away — see `ProcessSupervisor`.
         let process = Process()
-        process.executableURL = executable
-        process.arguments = config.arguments()
+        process.executableURL = ProcessSupervisor.shell
+        process.arguments = ProcessSupervisor.arguments(
+            executable: executable, arguments: config.arguments())
+        let lifelinePipe = Pipe()
         // ardopcf writes debug WAV files to its working directory when
         // no log directory is set; keep that out of the app's cwd.
         process.currentDirectoryURL = config.logDirectory
@@ -112,7 +123,7 @@ public actor ArdopProcess {
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
-        process.standardInput = FileHandle.nullDevice
+        process.standardInput = lifelinePipe.fileHandleForReading
         for pipe in [stdout, stderr] {
             pipe.fileHandleForReading.readabilityHandler = { handle in
                 collector.ingest(handle.availableData, from: handle)
@@ -140,11 +151,19 @@ public actor ArdopProcess {
         }
         self.process = process
         self.processIdentifier = process.processIdentifier
+        // Only we may hold the write end: the child's copy of the read
+        // end is closed here, ours is what keeps ardopcf alive.
+        try? lifelinePipe.fileHandleForReading.close()
+        self.lifeline = lifelinePipe.fileHandleForWriting
 
         // Wait for the control port to accept a connection.
         let deadline = ContinuousClock.now + readyTimeout
         while ContinuousClock.now < deadline {
             if !process.isRunning {
+                self.process = nil
+                self.processIdentifier = nil
+                try? lifeline?.close()
+                lifeline = nil
                 throw ArdopProcessError.terminatedEarly(
                     exitCode: process.terminationStatus,
                     log: collector.recentLines)
@@ -164,6 +183,10 @@ public actor ArdopProcess {
         guard let process else { return }
         self.process = nil
         self.processIdentifier = nil
+        defer {
+            try? lifeline?.close()
+            lifeline = nil
+        }
 
         if process.isRunning {
             process.interrupt()  // SIGINT: ardopcf shuts down cleanly
@@ -175,6 +198,13 @@ public actor ArdopProcess {
                 }
             }
         }
+    }
+
+    /// Closes our end of the supervision pipe without stopping the
+    /// process — what happens when the app dies. Test seam.
+    func dropLifelineForTesting() {
+        try? lifeline?.close()
+        lifeline = nil
     }
 
     private func waitForExit(of process: Process, upTo timeout: Duration) async -> Bool {
