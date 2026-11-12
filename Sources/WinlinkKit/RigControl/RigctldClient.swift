@@ -116,7 +116,9 @@ public actor RigctldClient {
     /// here; leaving the second in the queue would desynchronise the
     /// next command's reply.
     public func mode() async throws -> Mode {
-        let name = try await command("\\get_mode")
+        await acquire()
+        defer { release() }
+        let name = try await exchange("\\get_mode")
         // A failed command reports RPRT and sends no passband line.
         if name.hasPrefix("RPRT ") {
             throw WinlinkError.remoteError("rigctld: get_mode failed (\(name))")
@@ -176,9 +178,40 @@ public actor RigctldClient {
 
     // MARK: - Protocol plumbing
 
-    /// Sends one command and returns the first reply line.
-    /// `RPRT <code>` replies are mapped to success (0) or an error.
+    // Commands are strictly serialised. The actor alone does not do
+    // that: it is re-entrant at every `await`, so a poll and a PTT
+    // command issued concurrently would interleave and read each
+    // other's reply lines.
+    private var busy = false
+    private var queue = [CheckedContinuation<Void, Never>]()
+
+    private func acquire() async {
+        guard busy else {
+            busy = true
+            return
+        }
+        await withCheckedContinuation { queue.append($0) }
+    }
+
+    private func release() {
+        if queue.isEmpty {
+            busy = false
+        } else {
+            queue.removeFirst().resume()
+        }
+    }
+
+    /// Sends one command and returns the first reply line, after any
+    /// command already in flight has completed.
     private func command(_ cmd: String) async throws -> String {
+        await acquire()
+        defer { release() }
+        return try await exchange(cmd)
+    }
+
+    /// One command/reply round trip; the caller holds the command lock.
+    /// `RPRT <code>` replies are mapped to success (0) or an error.
+    private func exchange(_ cmd: String) async throws -> String {
         guard !closed else { throw WinlinkError.connectionClosed }
         startReadingIfNeeded()
         try await transport.write(Data((cmd + "\n").utf8))

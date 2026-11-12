@@ -167,6 +167,30 @@ private actor FakeRigctld {
         #expect(try await second == 14_109_200)
     }
 
+    /// A poll and a PTT command issued at the same time must not read
+    /// each other's replies: the second command goes out only after
+    /// the first one — including both `\get_mode` lines — is answered.
+    @Test func concurrentCommandsAreSerialised() async throws {
+        let (client, rigctld) = await makePair()
+
+        let mode = Task { try await client.mode() }
+        #expect(try await rigctld.readCommand() == "\\get_mode")
+        let ptt = Task { try await client.setPTT(true) }
+        let freq = Task { try await client.frequency() }
+        try await Task.sleep(for: .milliseconds(50))
+        await rigctld.reply("PKTUSB")
+        await rigctld.reply("3000")
+        #expect(try await mode.value == RigctldClient.Mode(name: "PKTUSB", passbandHz: 3000))
+
+        // The two queued commands arrive one at a time, in either order.
+        for _ in 0..<2 {
+            let cmd = try await rigctld.readCommand()
+            await rigctld.reply(cmd == "\\get_freq" ? "3611500" : "RPRT 0")
+        }
+        try await ptt.value
+        #expect(try await freq.value == 3_611_500)
+    }
+
     /// A failed `\get_mode` sends RPRT and no passband line — waiting
     /// for a second line would hang until the timeout.
     @Test func modeThrowsOnRPRTWithoutHangingOnASecondLine() async throws {
