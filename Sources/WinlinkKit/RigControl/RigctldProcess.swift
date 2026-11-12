@@ -30,7 +30,7 @@ public actor RigctldProcess {
     private let config: RigctldLaunchConfig
     private var process: Process?
     private var collector: LineCollector?
-    /// Write end of the supervision pipe; see `supervisorScript`.
+    /// Write end of the supervision pipe; see `ProcessSupervisor`.
     private var lifeline: FileHandle?
 
     /// Merged stdout/stderr of the process, line by line. A single
@@ -66,10 +66,11 @@ public actor RigctldProcess {
         precondition(process == nil, "RigctldProcess.start() called twice")
 
         // rigctld runs under a small shell supervisor that ends it as
-        // soon as this process goes away — see `supervisorScript`.
+        // soon as this process goes away — see `ProcessSupervisor`.
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", Self.supervisorScript, executable.path] + config.arguments()
+        process.executableURL = ProcessSupervisor.shell
+        process.arguments = ProcessSupervisor.arguments(
+            executable: executable, arguments: config.arguments())
         process.currentDirectoryURL = FileManager.default.temporaryDirectory
         let lifelinePipe = Pipe()
         process.standardInput = lifelinePipe.fileHandleForReading
@@ -153,34 +154,6 @@ public actor RigctldProcess {
             }
         }
     }
-
-    /// Runs rigctld (`$0` with its arguments) and ends it when stdin
-    /// reaches end-of-file — that is, when the parent holding the other
-    /// end of the pipe exits, however it exits.
-    ///
-    /// Without this a crashed or force-quit app leaves rigctld running
-    /// under launchd, still holding the serial port. Cleaning up
-    /// afterwards is not possible from a sandboxed app: it may not
-    /// signal a process started by an earlier instance of itself. A
-    /// termination hook alone does not cover crashes.
-    ///
-    /// fd 3 carries the pipe into the watcher, because a background job
-    /// in a non-interactive shell gets /dev/null as stdin. SIGTERM/SIGINT
-    /// to the shell (from `stop()` or the app's termination hook) are
-    /// passed on to rigctld; the shell exits with rigctld's status.
-    static let supervisorScript = """
-        exec 3<&0
-        "$0" "$@" 3<&- </dev/null &
-        child=$!
-        ( cat <&3 >/dev/null; kill "$child" 2>/dev/null ) &
-        watcher=$!
-        exec 3<&-
-        trap 'kill "$child" "$watcher" 2>/dev/null; wait "$child" 2>/dev/null; exit 0' TERM INT
-        wait "$child"
-        status=$?
-        kill "$watcher" 2>/dev/null
-        exit "$status"
-        """
 
     /// Closes our end of the supervision pipe without stopping the
     /// process — what happens when the app dies. Test seam.
