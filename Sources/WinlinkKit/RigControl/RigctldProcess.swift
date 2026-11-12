@@ -12,6 +12,10 @@ public enum RigctldProcessError: Error, Sendable, Equatable {
     case terminatedEarly(exitCode: Int32, log: [String])
     /// The TCP port did not become reachable within the timeout.
     case readyTimeout(log: [String])
+    /// Something already listens on the port rigctld was to use. The
+    /// readiness probe would answer for that other service, and the
+    /// client would then talk to it — possibly another rig.
+    case portInUse(port: UInt16)
 }
 
 /// Runs a bundled Hamlib `rigctld` as a managed child process.
@@ -64,6 +68,10 @@ public actor RigctldProcess {
     /// connection (probe connection, closed immediately).
     public func start(readyTimeout: Duration = .seconds(10)) async throws {
         precondition(process == nil, "RigctldProcess.start() called twice")
+        guard await probePort() == false else {
+            logContinuation.finish()
+            throw RigctldProcessError.portInUse(port: config.listenPort)
+        }
 
         // rigctld runs under a small shell supervisor that ends it as
         // soon as this process goes away — see `ProcessSupervisor`.
@@ -149,8 +157,14 @@ public actor RigctldProcess {
         if process.isRunning {
             process.terminate()
             if await waitForExit(of: process, upTo: gracePeriod) == false {
-                kill(process.processIdentifier, SIGKILL)
-                _ = await waitForExit(of: process, upTo: .seconds(2))
+                // SIGKILL to this PID would only end the supervisor shell
+                // and leave the helper holding its port — have the
+                // supervisor kill the helper instead.
+                ProcessSupervisor.forceKill(supervisor: process.processIdentifier)
+                if await waitForExit(of: process, upTo: .seconds(2)) == false {
+                    kill(process.processIdentifier, SIGKILL)
+                    _ = await waitForExit(of: process, upTo: .seconds(2))
+                }
             }
         }
     }

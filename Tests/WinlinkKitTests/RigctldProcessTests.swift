@@ -161,6 +161,94 @@ private func makeFakeExecutable(_ script: String) throws -> URL {
         #expect(kill(daemon, 0) != 0)
     }
 
+    /// A daemon that ignores SIGTERM (hangs in its cleanup): stop()
+    /// must still end the daemon itself, not just the supervisor shell
+    /// in front of it — otherwise it keeps the serial port.
+    @Test func stopKillsADaemonThatIgnoresSIGTERM() async throws {
+        let port = UInt16.random(in: 40000..<60000)
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rigctld-fake-\(UUID().uuidString).pid")
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        let exe = try makeStubbornDaemon(port: port, pidFile: pidFile)
+        let process = RigctldProcess(
+            executable: exe, config: RigctldLaunchConfig(model: 1, listenPort: port))
+        try await process.start(readyTimeout: .seconds(15))
+        let daemon = try #require(Int32(try String(contentsOf: pidFile, encoding: .utf8)))
+
+        await process.stop(gracePeriod: .milliseconds(500))
+        #expect(kill(daemon, 0) != 0)
+        #expect(await process.isRunning == false)
+    }
+
+    /// The same daemon when the app dies: SIGTERM from the watcher is
+    /// ignored, SIGKILL follows after the grace period.
+    @Test func stubbornDaemonEndsWhenTheParentGoesAway() async throws {
+        let port = UInt16.random(in: 40000..<60000)
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rigctld-fake-\(UUID().uuidString).pid")
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        let exe = try makeStubbornDaemon(port: port, pidFile: pidFile)
+        let process = RigctldProcess(
+            executable: exe, config: RigctldLaunchConfig(model: 1, listenPort: port))
+        try await process.start(readyTimeout: .seconds(15))
+        let daemon = try #require(Int32(try String(contentsOf: pidFile, encoding: .utf8)))
+
+        await process.dropLifelineForTesting()
+
+        let deadline = ContinuousClock.now + .seconds(ProcessSupervisor.lifelineGraceSeconds + 5)
+        while kill(daemon, 0) == 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(kill(daemon, 0) != 0)
+    }
+
+    /// Something else already listens on the port: start() refuses
+    /// instead of reporting that foreign listener as "rigctld ready".
+    @Test func occupiedPortIsRefusedBeforeLaunch() async throws {
+        let port = UInt16.random(in: 40000..<60000)
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rigctld-fake-\(UUID().uuidString).pid")
+        let marker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rigctld-fake-\(UUID().uuidString).started")
+        defer {
+            try? FileManager.default.removeItem(at: pidFile)
+            try? FileManager.default.removeItem(at: marker)
+        }
+        let other = RigctldProcess(
+            executable: try makeStubbornDaemon(port: port, pidFile: pidFile),
+            config: RigctldLaunchConfig(model: 1, listenPort: port))
+        try await other.start(readyTimeout: .seconds(15))
+
+        let exe = try makeFakeExecutable("touch '\(marker.path)'; exec sleep 60")
+        let process = RigctldProcess(
+            executable: exe, config: RigctldLaunchConfig(model: 1, listenPort: port))
+        await #expect(throws: RigctldProcessError.portInUse(port: port)) {
+            try await process.start(readyTimeout: .seconds(5))
+        }
+        #expect(await process.isRunning == false)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+
+        await other.stop(gracePeriod: .milliseconds(500))
+    }
+
+    /// A fake daemon that listens on `port` and ignores SIGTERM.
+    private func makeStubbornDaemon(port: UInt16, pidFile: URL) throws -> URL {
+        try makeFakeExecutable("""
+            exec python3 -c '
+            import os, socket, signal
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            open("\(pidFile.path)", "w").write(str(os.getpid()))
+            s = socket.socket()
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.1", \(port)))
+            s.listen(4)
+            while True:
+                c, _ = s.accept()
+                c.close()
+            '
+            """)
+    }
+
     /// rigctld that cannot open the rig exits at once — the error
     /// carries what it printed.
     @Test func earlyExitThrowsWithCapturedLog() async throws {

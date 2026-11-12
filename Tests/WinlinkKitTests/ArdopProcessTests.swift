@@ -234,6 +234,36 @@ private func makeFakeExecutable(_ script: String) throws -> URL {
         #expect(ContinuousClock.now - started < .seconds(2))
     }
 
+    /// A TNC that ignores SIGINT and SIGTERM: the last step of stop()
+    /// must end the TNC itself, not just the supervisor shell.
+    @Test func stopKillsATNCThatIgnoresSignals() async throws {
+        let port = UInt16.random(in: 20000..<40000)
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ardop-fake-\(UUID().uuidString).pid")
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        let exe = try makeFakeExecutable("""
+            exec python3 -c '
+            import os, socket, signal
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            open("\(pidFile.path)", "w").write(str(os.getpid()))
+            s = socket.socket()
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.1", \(port)))
+            s.listen(4)
+            while True:
+                c, _ = s.accept()
+                c.close()
+            '
+            """)
+        let process = ArdopProcess(executable: exe, config: ArdopLaunchConfig(controlPort: port))
+        try await process.start(readyTimeout: .seconds(15))
+        let tnc = try #require(Int32(try String(contentsOf: pidFile, encoding: .utf8)))
+
+        await process.stop(gracePeriod: .milliseconds(300))
+        #expect(kill(tnc, 0) != 0)
+    }
+
     /// A synchronous SIGINT to `processIdentifier` (app-termination
     /// hook) reaches ardopcf as SIGINT.
     @Test func signalToProcessIdentifierReachesTheTNC() async throws {

@@ -193,8 +193,14 @@ public actor ArdopProcess {
             if await waitForExit(of: process, upTo: gracePeriod) == false {
                 process.terminate()  // SIGTERM: also handled by ardopcf
                 if await waitForExit(of: process, upTo: gracePeriod) == false {
-                    kill(process.processIdentifier, SIGKILL)
-                    _ = await waitForExit(of: process, upTo: .seconds(2))
+                    // SIGKILL to this PID would only end the supervisor shell
+                    // and leave the helper holding its port — have the
+                    // supervisor kill the helper instead.
+                    ProcessSupervisor.forceKill(supervisor: process.processIdentifier)
+                    if await waitForExit(of: process, upTo: .seconds(2)) == false {
+                        kill(process.processIdentifier, SIGKILL)
+                        _ = await waitForExit(of: process, upTo: .seconds(2))
+                    }
                 }
             }
         }
