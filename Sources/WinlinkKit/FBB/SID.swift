@@ -30,10 +30,19 @@ struct SID: Equatable, Sendable {
     /// Parses a SID line. The greedy `.*` before the `-` means the features
     /// are whatever follows the *last* hyphen — same as Go's `\[.*-(.*)\]`.
     init(parsing line: String) throws {
-        guard let match = line.firstMatch(of: /\[.*-(.*)\]/) else {
-            throw WinlinkError.malformedInput("Bad SID line: \(line)")
+        var remaining = line[...]
+        while let opening = remaining.firstIndex(of: "[") {
+            let afterOpening = line.index(after: opening)
+            let lineEnd = line[afterOpening...].firstIndex(where: { $0.isNewline }) ?? line.endIndex
+            let candidate = line[afterOpening..<lineEnd]
+            if let closing = candidate.lastIndex(of: "]"),
+               let hyphen = candidate[..<closing].lastIndex(of: "-") {
+                self.features = String(line[line.index(after: hyphen)..<closing]).uppercased()
+                return
+            }
+            remaining = line[lineEnd...]
         }
-        self.features = String(match.1).uppercased()
+        throw WinlinkError.malformedInput("Bad SID line: \(line)")
     }
 
     /// True if the remote announced the given feature code.
