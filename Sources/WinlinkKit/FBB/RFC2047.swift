@@ -62,13 +62,12 @@ enum RFC2047 {
 
         // General RFC 2047 decoding: replace each encoded-word, dropping
         // whitespace between adjacent encoded words.
-        let pattern = /=\?([^?]+)\?([qQbB])\?([^?]*)\?=/
         var result = ""
         var lastEnd = header.startIndex
         var lastWasEncodedWord = false
 
-        for match in header.matches(of: pattern) {
-            let between = String(header[lastEnd..<match.range.lowerBound])
+        while let word = nextEncodedWord(in: header, from: lastEnd) {
+            let between = String(header[lastEnd..<word.range.lowerBound])
             let betweenIsSpace = !between.isEmpty
                 && between.allSatisfy { $0 == " " || $0 == "\t" }
             if !(lastWasEncodedWord && betweenIsSpace) {
@@ -76,15 +75,49 @@ enum RFC2047 {
             }
 
             result += decodeWord(
-                charset: String(match.1),
-                encoding: Character(String(match.2).uppercased()),
-                content: String(match.3)
+                charset: String(word.charset),
+                encoding: Character(String(word.encoding).uppercased()),
+                content: String(word.content)
             )
-            lastEnd = match.range.upperBound
+            lastEnd = word.range.upperBound
             lastWasEncodedWord = true
         }
         result += String(header[lastEnd...])
         return result
+    }
+
+    // Match the encoded-word grammar using Character boundaries, as Swift Regex
+    // does, without requiring its iOS 16 runtime.
+    private static func nextEncodedWord(
+        in header: String, from start: String.Index
+    ) -> (range: Range<String.Index>, charset: Substring, encoding: Character, content: Substring)? {
+        var searchStart = start
+        while let opening = header[searchStart...].firstIndex(of: "=") {
+            searchStart = header.index(after: opening)
+            guard searchStart < header.endIndex, header[searchStart] == "?" else { continue }
+
+            let charsetStart = header.index(after: searchStart)
+            guard let charsetEnd = header[charsetStart...].firstIndex(of: "?"),
+                  charsetEnd > charsetStart else { continue }
+            let encodingIndex = header.index(after: charsetEnd)
+            guard encodingIndex < header.endIndex,
+                  ["q", "Q", "b", "B"].contains(header[encodingIndex]) else { continue }
+            let encodingEnd = header.index(after: encodingIndex)
+            guard encodingEnd < header.endIndex, header[encodingEnd] == "?" else { continue }
+
+            let contentStart = header.index(after: encodingEnd)
+            guard let contentEnd = header[contentStart...].firstIndex(of: "?") else { continue }
+            let closing = header.index(after: contentEnd)
+            guard closing < header.endIndex, header[closing] == "=" else { continue }
+
+            return (
+                opening..<header.index(after: closing),
+                header[charsetStart..<charsetEnd],
+                header[encodingIndex],
+                header[contentStart..<contentEnd]
+            )
+        }
+        return nil
     }
 
     private static func decodeWord(charset: String, encoding: Character, content: String) -> String {
